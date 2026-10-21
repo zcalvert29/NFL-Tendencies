@@ -11,9 +11,11 @@ colors, and tendency grading, with two additions throughout:
   bars mark the NFL's split, the run-lane and pass-zone pictures show and color against the NFL's number in the same
   lane or zone, and the red zone numbers show the difference from the NFL.
 
-## The page
+## Pages
 
-Pick an offense in the sidebar. One page, five tabs:
+### Tendencies
+
+Pick an offense in the sidebar. Five tabs:
 
 | Tab | What it shows |
 |---|---|
@@ -26,6 +28,36 @@ Pick an offense in the sidebar. One page, five tabs:
 **Sidebar filters:** season, season type, week, down, distance, situation (neutral, red zone, goal to go, backed
 up, 3rd & short, short yardage, long yardage, two-minute), and a minimum-plays cutoff. NFL comparisons always use
 the same filters across all 32 teams.
+
+### Play-Calling Identity
+
+Which offenses call it unlike an average NFL team in the same spots, and which are NFL average. Every snap is compared
+with what the rest of the league does in that exact spot (regular season, score within 16, outside the last 2
+minutes of a half), on three measures:
+
+| Measure | Compared with |
+|---|---|
+| **Lean (PROE)** | nflfastR's `xpass`, re-centered on what the rest of the league actually did in the same spots that season (the model was fit on earlier seasons and expects more passing on 3rd/4th & 1-2 than today's NFL does) |
+| **Shotgun over expected** | the rest of the league's shotgun rate in the same down × distance × field zone × score state |
+| **3+ WR personnel over expected** | the rest of the league's 3+ WR rate in the same spots (seasons with FTN charting only) |
+
+Each measure gets a game-clustered z-score (|z| ≥ 2 = detectable) and an empirical-Bayes shrunk value in units of
+the real team-to-team spread. The **unorthodoxy index** is the root mean square of those: 0 = calls it like an
+average team, 1 = one typical team-to-team spread away on each measure. *Unorthodox* = index ≥ 1.0; *NFL average* =
+not detectably and materially (≥ 0.5 spreads) different on any measure; *Distinct* = in between. A measure a season
+doesn't have (personnel in the season in progress) is left out of that season's index and table.
+
+The table lists every value for exploration: pass, shotgun, 3+ WR, 2+ TE, and 2+ RB rates against expected, the
+personnel mix distance, top personnel group, situational PROE against the NFL (early downs, 1st & 10, 2nd & long,
+short yardage, red zone), and last season's rank. A reliability table shows how much of each measure is a real
+team trait (split-half, Spearman-Brown): shotgun and personnel ≈ 0.95, lean 0.70-0.88, short-yardage PROE ≈ 0.6,
+which is why the situational splits are kept out of the index.
+
+| 2025 | 2026 (6 weeks, no personnel charting yet) |
+|---|---|
+| ![2025](docs/identity_2025.png) | ![2026](docs/identity_2026.png) |
+
+More screenshots, including the full tables, are in [`docs/`](docs/).
 
 ## Data
 
@@ -41,7 +73,10 @@ season). The season in progress is re-downloaded every 12 hours so new weeks sho
 ## Project structure
 
 ```
-app.py              Page, sidebar filters, tabs
+app.py              Navigation between the pages
+page_tendencies.py  Tendencies page: sidebar filters, tabs
+page_identity.py    Play-Calling Identity page
+identity.py         Play-calling identity measures (no Streamlit code)
 data.py             Downloads nflfastR pbp + participation; builds the app's columns
 common.py           Metrics, NFL comparison columns, table colors, tendency badges, split bars
 tab_tendencies.py   Tendencies tab
@@ -51,6 +86,7 @@ tab_run_game.py     Run game tab (run-lane diagram)
 tab_pass_game.py    Pass game tab (pass zones)
 pass_chart.py       The pass chart drawing
 tests/              Unit tests
+docs/               Screenshots
 ```
 
 ## Running locally
