@@ -1,61 +1,56 @@
 # NFL Tendencies
 
-A scouting and tendency dashboard for every NFL team, built on [nflfastR](https://www.nflfastr.com/) play-by-play.
-It's the NFL counterpart to the [Dowling Catholic Football Analytics](https://github.com/zcalvert29/Dowling-Football)
-app: the same tables, colors, takeaway cards, and tendency views, but with every number compared to the rest of the
-league in the same situation.
+The [Dowling Catholic Football Analytics](https://github.com/zcalvert29/Dowling-Football) app's **Scout Opposing
+Offense** page, rebuilt for any NFL offense on [nflfastR](https://www.nflfastr.com/) play-by-play. Same views,
+colors, and tendency grading, with two additions throughout:
 
----
+- **PROE (pass rate over expected):** how much more often a team throws than an average NFL team would in the exact
+  same spots (down, distance, field position, score, time, timeouts), from nflfastR's `xpass` model.
+- **League-wide situational averages:** every table can carry "NFL" columns, which are the league's numbers for the
+  same row with the same filters (the NFL's pass rate on 3rd & long next to the team's 3rd & long). The run/pass
+  bars mark the NFL's split, the run-lane and pass-zone pictures show and color against the NFL's number in the same
+  lane or zone, and the red zone numbers show the difference from the NFL.
 
-## What's inside
+## The page
 
-A multipage **Streamlit** app. Pick a team (and, on a couple of pages, an opponent) in the sidebar.
+Pick an offense in the sidebar. One page, five tabs:
 
-| Area | What it does |
+| Tab | What it shows |
 |---|---|
-| **League Overview** | Every team's offense vs defense EPA and pass vs run EPA (team colors), plus a sortable league table with top/bottom-quarter shading |
-| **Offense Overview** | EPA, success, explosive rate vs the NFL; results by down, personnel, formation, personnel + formation, score, and quarter, with takeaway cards and an EPA-vs-success chart |
-| **Run Game** | EPA by run lane (ends, tackles, guards, middle) against the league in the same lane; runs by personnel, formation, box count, and distance; ball carriers |
-| **Pass Game** | Pass-zone heatmap (direction × depth) against the league, by depth and formation, vs each coverage, man vs zone, clean vs pressured, by number of rushers; targets and passers |
-| **Defense Overview / Pass / Run** | The same views from the defense's side: what it allowed, which packages it answers each personnel with, coverage mix by down & distance, blitz and pressure rates, box counts |
-| **Red Zone** (offense and defense) | Trips, TD rate, points per trip vs the NFL; by down, personnel, and where the throws go |
-| **Weekly Trends** | EPA, success, pass/rush EPA, and pass rate over expected game by game, with the league average |
-| **Tendencies & Tells** | *Tells*: situations where a team's run/pass split is far from both its usual split and the league's, flagged only when two-proportion z-tests say it isn't noise. Plus a down & distance grid, a personnel → formation tendency tree, play sequencing, field position, 3rd downs, and 4th-down aggressiveness vs the league in the same spots |
-| **Matchup** | One team's offense against another's defense, metric by metric with league ranks and who has the edge; personnel and coverage cross-checks |
-| **Team Profiles** | League-percentile bars for offense and defense, two teams side by side |
-| **Season Comparison** | One team, two seasons: offense and defense metrics, ranks, and the change |
-| **Game Recap** | Win probability chart, head-to-head numbers, drives, and the biggest swings of any game |
-| **Play Finder** | Filter by personnel, formation, coverage, field zone, or words in the play description; download as CSV |
+| **Tendencies** | Down & distance grid (run/pass split with the NFL's split marked, PROE, most-used formation and personnel, tell / lean badges); PROE charts by down & distance and by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); offensive, formation, and personnel tendency tables; 3rd and 4th downs with NFL conversion rates; every 3rd/4th down call; best 10 plays |
+| **Sequencing** | What they call after a run, a pass, a completion, an incompletion, a big gain, a loss, a play that worked or didn't, and on a new set of downs, each with the NFL's pass rate after the same kind of snap and PROE; by down after a run or a pass |
+| **Red zone** | Trips, touchdown rate, scoring rate, points per trip, and trips per game against the NFL; how trips ended; how it's called in each zone inside the 20 with NFL pass rate, success, and EPA; formations and personnel inside the 20; run/pass by direction between the 11 and 20 and inside the 10 |
+| **Run game** | Run-lane diagram (EPA and carries for each of nflfastR's seven lanes, colored against the NFL's EPA in the same lane); runs by lane, formation, distance, personnel, and box count; ball carriers; best runs |
+| **Pass game** | Pass-zone heatmap (direction × depth, each zone shaded against the NFL's number in the same zone); pass chart of every throw; passes by depth, formation, coverage, and man/zone; targets; best passes |
 
-### Filters
-Season, season type, week range, down, distance, situation (neutral, garbage time removed, early downs, two-minute,
-red zone, by half, leading/trailing), and a minimum-plays cutoff for tables. League comparisons always use the same
-filters across all 32 teams, so every "vs NFL" number is apples to apples.
+**Sidebar filters:** season, season type, week, down, distance, situation (neutral, red zone, goal to go, backed
+up, 3rd & short, short yardage, long yardage, two-minute), and a minimum-plays cutoff. NFL comparisons always use
+the same filters across all 32 teams.
 
 ## Data
 
-- **Play-by-play:** nflfastR via the [nflverse data releases](https://github.com/nflverse/nflverse-data/releases)
-  (EPA, success, win probability, `xpass`/pass rate over expected, CPOE, pass direction and air yards, run gap).
-- **Participation charting:** nflverse's FTN/NGS participation file adds offensive formation and personnel,
-  defensive personnel, men in the box, number of pass rushers, pressure, and coverage (man/zone and shell).
-  nflverse publishes it after each season, so **the season in progress has no personnel or coverage yet**; formation
-  falls back to nflfastR's shotgun / under center flag, and those tables say so.
-- **Teams:** names, colors, and logos from nflverse's `teams_colors_logos`.
+- **Play-by-play:** nflfastR from the [nflverse data releases](https://github.com/nflverse/nflverse-data/releases):
+  EPA, success, `xpass` / `pass_oe`, pass direction and air yards, run location and gap.
+- **Participation charting:** nflverse's FTN participation file adds formation, personnel, men in the box, and
+  coverage. nflverse publishes it after each season, so **the season in progress has no personnel, box count, or
+  coverage yet**; formation falls back to nflfastR's shotgun / under center flag, and those tables say so.
 
-The app downloads each season the first time it's needed and keeps a slimmed copy in `data/` (about 5 MB a season).
-The current season is re-downloaded every 12 hours so new weeks show up.
+The app downloads each season the first time it's picked and keeps a slimmed copy in `data/` (about 5 MB a
+season). The season in progress is re-downloaded every 12 hours so new weeks show up.
 
 ## Project structure
 
 ```
-app.py          Streamlit entrypoint: navigation, sidebar filters
-views.py        Page bodies
-data.py         Downloads nflfastR pbp + participation and builds the app's columns (personnel codes,
-                distance/field buckets, pass zones, run lanes, sequencing)
-tables.py       Crosstabs, table coloring, takeaway cards, EPA vs success scatter
-charts.py       Pass zones, run lanes, weekly trends, league scatter, percentile bars, win probability
-tendencies.py   Tells, down & distance grid, tendency tree, sequencing, field position, red zone, 3rd/4th downs
-tests/          Unit tests for the data curation and tell detection
+app.py              Page, sidebar filters, tabs
+data.py             Downloads nflfastR pbp + participation; builds the app's columns
+common.py           Metrics, NFL comparison columns, table colors, tendency badges, split bars
+tab_tendencies.py   Tendencies tab
+tab_sequencing.py   Sequencing tab
+tab_red_zone.py     Red zone tab
+tab_run_game.py     Run game tab (run-lane diagram)
+tab_pass_game.py    Pass game tab (pass zones)
+pass_chart.py       The pass chart drawing
+tests/              Unit tests
 ```
 
 ## Running locally
@@ -67,25 +62,18 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-To pre-download seasons (optional; the app does it on demand): `python data.py 2024 2025 2026`
-
-Run the tests with:
-
-```bash
-python -m pytest tests/
-```
+Optional: `python data.py 2024 2025 2026` downloads seasons ahead of time. Run the tests with `python -m pytest`.
 
 ## Definitions
 
-- **EPA:** expected points added, from nflfastR's model. **Success:** a play with positive EPA (nflfastR's
-  definition; the Dowling app uses the 40/70/100% yardage rule instead).
+- **EPA:** expected points added (nflfastR). **Success:** a play with positive EPA (nflfastR's definition; the
+  Dowling app uses the 40/70/100% yardage rule).
 - **Explosive:** a run of 10+ or a pass of 20+ yards.
-- **PROE:** pass rate over expected, from nflfastR's `xpass` model.
 - **Personnel:** RBs (incl. FBs) then TEs, so "11" = 1 RB, 1 TE, 3 WR; "+OL" = an extra lineman.
-- **Defensive package:** Base = 4 DBs, Nickel = 5, Dime = 6, Quarter = 7+.
-
-## Tech stack
-**Python** (Streamlit, pandas, NumPy, Altair, PyArrow) · nflverse / nflfastR data · pytest
+- **Tell / lean / small sample:** how much to trust a 70%+ split, graded by the Wilson lower bound (90%), as in the
+  Dowling app.
+- **Colors:** from the scouted offense's side. With an NFL column, green/red = clearly better/worse than the NFL in
+  that row. Without one, the Dowling offense rule. Rows under 5 plays aren't colored; rows under 10 are grayed.
 
 ## Author
 **Zack Calvert** · [LinkedIn](https://linkedin.com/in/zack-calvert) · [Substack](https://zcalvert.substack.com)
