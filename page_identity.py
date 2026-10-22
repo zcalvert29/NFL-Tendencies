@@ -350,6 +350,53 @@ st.altair_chart(index_chart(d, prior), width="stretch")
 st.caption(f"Bars in each team's primary color, logo on top. {idn.UNORTHODOX:.1f} or higher = unorthodox. Hover a bar "
            f"for what makes the team different" + (" and its index last season." if prior is not None else "."))
 
+st.markdown("**Each team's score on each measure**")
+score_cols = {m: f"{m}_std" for m in measures if m in idn.MEASURES}
+if idn.SITUATIONAL in measures:
+    score_cols[idn.SITUATIONAL] = "situational_std"
+scores = pd.DataFrame({"Logo": d["logo"].to_numpy(), "Team": d["name"].to_numpy(),
+                       "Unorthodoxy index": d["Unorthodoxy index"].to_numpy(),
+                       **{LABELS[m]: d[c].to_numpy() for m, c in score_cols.items()}}, index=d["Team"].to_numpy())
+# Which measure contributes most to the index (the largest score, either direction).
+scores["Driven by"] = scores[[LABELS[m] for m in score_cols]].abs().idxmax(axis=1)
+score_fmt = {LABELS[m]: "{:.2f}" if m == idn.SITUATIONAL else "{:+.2f}" for m in score_cols}
+st.dataframe(
+    scores.style.format({**score_fmt, "Unorthodoxy index": "{:.2f}"}, na_rep="")
+    .apply(shade_std, subset=list(score_fmt)),
+    width="stretch", hide_index=True, height=36 * (len(scores) + 1) + 2,
+    column_config={"Logo": st.column_config.ImageColumn("", width="small")})
+
+
+def _extremes(col: str) -> str:
+    """'BAL −1.51 … LA +1.68': the lowest and highest score shown, for the writeup."""
+    s = scores[LABELS[col]].dropna()
+    if s.empty:
+        return ""
+    lo, hi = s.idxmin(), s.idxmax()
+    return f" This season's range: {lo} {s[lo]:+.2f} to {hi} {s[hi]:+.2f}."
+
+
+notes = {
+    "lean": "**Lean (PROE)** — how much more often the team throws than an average NFL team would in the same spots. "
+            "Positive = pass-heavy, negative = run-heavy. ±1 is about one typical gap between NFL offenses; beyond ±1.5 "
+            "is among the most lopsided play callers in the league.",
+    "shotgun": "**Shotgun over expected** — how often the team snaps from shotgun compared with what the league does in "
+               "the same down, distance, field position, and score. Positive = more shotgun (spread, quick-game "
+               "offenses), negative = more under center (play action, wide zone, power run games).",
+    "spread": "**3+ WR over expected** — how often the team has three or more receivers on the field compared with the "
+              "league in the same spots. Positive = lighter, spread personnel (lots of 11 or 10); negative = heavier "
+              "personnel (12, 13, 21, fullbacks, extra linemen).",
+    idn.SITUATIONAL: "**Situational play calling** — how unusually the team calls specific situations (1st & 10, 2nd & "
+                     "long, 3rd/4th & 1-2, red zone, after a run, its first 15 snaps, ...) once its overall lean is "
+                     "taken out. It has no sign: 0 = calls each situation the way its overall tendency predicts, "
+                     "higher = more situation-specific habits. Even average teams score about 0.4-0.6 here because some "
+                     "noise survives; above ~0.8 is worth a look, and the table further down shows which situation.",
+}
+st.markdown("\n".join(f"- {notes[m]}" + (_extremes(m) if m in idn.MEASURES else "") for m in score_cols))
+st.caption("Scores are in units of a typical gap between NFL offenses this season, after pulling small samples toward "
+           "the league average. Purple shading = how far from average, either direction. The unorthodoxy index is the "
+           "square root of the average squared score; \"Driven by\" is the measure with the largest score.")
+
 st.markdown("**Offensive EPA per play vs unorthodoxy**")
 r = d["Unorthodoxy index"].corr(d["EPA/play"])
 st.altair_chart(logo_scatter(d, "Unorthodoxy index", "EPA/play", "Unorthodoxy index →", "Offensive EPA per play →",
