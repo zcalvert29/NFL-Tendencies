@@ -96,6 +96,34 @@ def fetch_season(season: int, force: bool = False) -> Path:
     return path
 
 
+LOGO_PX = 64     # logos are cached at this size: plenty for chart markers, small enough to embed
+
+
+def team_logos(teams: pd.DataFrame) -> dict[str, str]:
+    """abbr -> logo as a data URI (PNG, LOGO_PX square), downloaded once from ESPN's CDN into data/logos/.
+
+    Charts embed the image itself instead of linking to ESPN: Vega draws on a canvas, which needs CORS headers on
+    linked images, so a hotlinked logo can silently fail to show. A logo that can't be downloaded is left out (the
+    chart still shows the team's colored dot)."""
+    import base64
+    from PIL import Image
+
+    folder = DATA_DIR / "logos"
+    folder.mkdir(parents=True, exist_ok=True)
+    out = {}
+    for abbr, url in teams.get("team_logo_espn", pd.Series(dtype=str)).dropna().items():
+        path = folder / f"{abbr}.png"
+        if not path.exists():
+            try:
+                img = Image.open(io.BytesIO(_download(url))).convert("RGBA")
+                img.thumbnail((LOGO_PX, LOGO_PX))
+                img.save(path, optimize=True)
+            except (urllib.error.URLError, OSError, ValueError):
+                continue
+        out[abbr] = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+    return out
+
+
 def load_teams() -> pd.DataFrame:
     path = DATA_DIR / "teams.csv"
     if not path.exists():
