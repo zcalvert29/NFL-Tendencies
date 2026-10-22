@@ -12,63 +12,110 @@ import streamlit as st
 import common as cm
 import data as dt
 
-TELL_SHARE = 0.75   # down & distance boxes: 75%+ one way on TELL_MIN_N+ plays gets a badge
-
-
-# ---- Down & distance grid ------------------------------------------------------------------------------------
-def dd_grid_html(team_d: pd.DataFrame, league_d: pd.DataFrame) -> str:
-    """Downs x distance: run/pass split bar (with the NFL's split marked), PROE, top formation, tell badge."""
+# ---- Down & distance: the boxes that stand out, then the full grid ----------------------------------------------
+def dd_cells(team_d: pd.DataFrame, league_d: pd.DataFrame) -> pd.DataFrame:
+    """One row per down & distance box: plays, pass rate, expected pass rate, PROE, NFL pass rate, top look."""
     d = team_d[team_d["DN"].notna() & team_d["Distance"].notna()]
-    if d.empty:
-        return ""
     lg = league_d[league_d["DN"].notna() & league_d["Distance"].notna()]
-    nfl_pass = lg.groupby(["DN", "Distance"])["PASS"].mean()
+    nfl_pass = lg.groupby(["DN", "Distance"], observed=True)["PASS"].mean()
+    rows = []
+    for (dn, dist), g in d.groupby(["DN", "Distance"], observed=True):
+        x = g[g["xpass"].notna()]   # nflfastR has no xpass on a handful of snaps
+        forms = g["Formation"].value_counts(normalize=True)
+        pers = g["Personnel"].value_counts(normalize=True)
+        look = (f"{forms.index[0]} {forms.iat[0]:.0%}" if len(forms) else "") + (
+            f", {pers.index[0]} personnel {pers.iat[0]:.0%}" if len(pers) else "")
+        rows.append({"DN": int(dn), "Distance": dist, "n": len(g), "pass_rate": g["PASS"].mean(),
+                     "xpass": x["xpass"].mean() if len(x) else np.nan,
+                     "proe": x["pass_oe"].mean() / 100 if len(x) else np.nan,
+                     "nfl": nfl_pass.get((dn, dist), np.nan), "look": look})
+    return pd.DataFrame(rows)
+
+
+def _name(dn: int, dist: str) -> str:
+    return f"{dt.DOWN_NAMES[dn]} & {dist.split(' (')[0].lower()}"
+
+
+def _hover(r) -> str:
+    return (f"{_name(r.DN, r.Distance)} ({r.Distance.split('(')[1].rstrip(')')}): {r.n} plays\n"
+            f"Pass {r.pass_rate:.0%} · expected for an average team {r.xpass:.0%} · NFL actual {r.nfl:.0%}\n"
+            f"PROE {cm.pct_points(r.proe)}" + (f"\nMost used: {r.look}" if r.look else ""))
+
+
+def callouts_html(cells: pd.DataFrame) -> str:
+    """A scouting-report sentence for each box that clearly differs from an average team (enough plays, |PROE| at
+    least CHIP_MIN_PROE), biggest first."""
+    notable = cells[(cells["n"] >= cm.TELL_MIN_N) & (cells["proe"].abs() >= cm.CHIP_MIN_PROE)]
+    notable = notable.reindex(notable["proe"].abs().sort_values(ascending=False).index).head(6)
+    if notable.empty:
+        return (f'<div style="{cm.CARD};font-size:14px">Nothing stands out: in every down & distance with '
+                f'{cm.TELL_MIN_N}+ plays they call it within {cm.CHIP_MIN_PROE:.0%} of an average team.</div>')
+    rows = []
+    for r in notable.itertuples():
+        # Shown as whole percents that add up: their rate − expected = the PROE on the chip.
+        their, gap = round(r.pass_rate * 100), int(round(r.proe * 100))
+        if r.proe > 0:
+            what = f"They throw <b>{their}%</b> of the time; an average team would throw {their - gap}% in those spots."
+        else:
+            what = (f"They run <b>{100 - their}%</b> of the time; an average team would run {100 - their + gap}% in "
+                    f"those spots.")
+        rows.append(f'<div title="{_hover(r)}" style="{cm.CARD};display:grid;'
+                    f'grid-template-columns:130px 1fr auto;gap:12px;align-items:center;font-size:14px">'
+                    f'<b>{_name(r.DN, r.Distance)}</b><span>{what} '
+                    f'<span style="opacity:.6;font-size:12px">{r.n} plays</span></span>{cm.proe_chip(r.proe)}</div>')
+    return f'<div style="display:grid;gap:6px;max-width:980px">{"".join(rows)}</div>'
+
+
+def dd_grid_html(cells: pd.DataFrame) -> str:
+    """Downs x distance: pass %, the run/pass bar, a PROE chip when the box clearly differs from an average team,
+    and the play count bottom right. Everything else is in the box's hover."""
+    if cells.empty:
+        return ""
     muted = "opacity:.65"
-    cells = ['<div></div>'] + [
+    out = ['<div></div>'] + [
         f'<div style="font-size:12px;text-align:center;{muted}">{lab.split(" (")[0]}<br>{lab.split("(")[1].rstrip(")")}</div>'
         for lab in dt.DISTANCE_ORDER]
-    for dn in [x for x in (1, 2, 3, 4) if (d["DN"] == x).any()]:
-        cells.append(f'<div style="font-weight:600;font-size:14px;display:flex;align-items:center">{dt.DOWN_NAMES[dn]}</div>')
+    for dn in [x for x in (1, 2, 3, 4) if (cells["DN"] == x).any()]:
+        out.append(f'<div style="font-weight:600;font-size:14px;display:flex;align-items:center">{dt.DOWN_NAMES[dn]}</div>')
         for dist in dt.DISTANCE_ORDER:
-            g = d[(d["DN"] == dn) & (d["Distance"] == dist)]
-            if g.empty:
-                cells.append(f'<div style="{cm.CARD};font-size:12px;{muted}">No plays</div>')
+            m = cells[(cells["DN"] == dn) & (cells["Distance"] == dist)]
+            if m.empty:
+                out.append(f'<div style="border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:8px 10px;'
+                           f'font-size:12px;{muted}">No plays</div>')
                 continue
-            n, pr = len(g), g["PASS"].mean()
-            nfl = nfl_pass.get((dn, dist), np.nan)
-            lead = f"Pass {pr:.0%}" if pr >= 0.5 else f"Run {1 - pr:.0%}"
-            k = round(max(pr, 1 - pr) * n)
-            flag = cm.badge(k, n) if max(pr, 1 - pr) >= TELL_SHARE else ""
-            low = " · low n" if n < cm.TELL_MIN_N else ""
-            forms = g["Formation"].value_counts()
-            form_txt = f"{forms.index[0]} · {forms.iat[0] / n:.0%}" if len(forms) else "–"
-            pers = g["Personnel"].value_counts()
-            if len(pers):
-                form_txt += f" · {pers.index[0]} pers. {pers.iat[0] / n:.0%}"
-            cells.append(
-                f'<div style="{cm.CARD};font-size:12px">'
-                f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">'
-                f'<div style="font-weight:600;font-size:13px">{lead}{flag}</div>'
-                f'<div style="{muted};white-space:nowrap">{n} plays{low}</div></div>'
-                f'{cm.split_bar(1 - pr, None if pd.isna(nfl) else 1 - nfl)}'
-                f'<div style="display:flex;justify-content:space-between;gap:6px">'
-                f'<span style="{muted}">NFL {nfl:.0%} pass</span>{cm.proe_text(g["pass_oe"].mean() / 100)}</div>'
-                f'<div style="{muted};margin-top:2px">{form_txt}</div></div>')
-    return (f'<div style="max-width:980px;font-family:inherit">{cm.LEGEND}'
+            r = next(m.itertuples())
+            small = r.n < cm.TELL_MIN_N
+            chip = cm.proe_chip(r.proe) if not small and abs(r.proe) >= cm.CHIP_MIN_PROE else ""
+            out.append(
+                f'<div title="{_hover(r)}" style="border:1px solid rgba(128,128,128,.25);'
+                f'border-radius:8px;padding:8px 10px;font-size:12px{";opacity:.45" if small else ""}">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;min-height:20px">'
+                f'<span><b style="font-size:15px">{r.pass_rate:.0%}</b> <span style="{muted}">pass</span></span>{chip}</div>'
+                f'{cm.split_bar(1 - r.pass_rate)}'
+                f'<div style="text-align:right;{muted}">{r.n} plays</div></div>')
+    legend = (f'<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;margin:2px 0 8px;align-items:center">'
+              f'<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{cm.RUN_C};'
+              f'margin-right:4px"></span>Run</span>'
+              f'<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{cm.PASS_C};'
+              f'margin-right:4px"></span>Pass</span>'
+              f'<span style="opacity:.7">chip = PROE, shown when it is {cm.CHIP_MIN_PROE:.0%} or more either way · faded = '
+              f'under {cm.TELL_MIN_N} plays · hover a box for the details</span></div>')
+    return (f'<div style="max-width:980px;font-family:inherit">{legend}'
             f'<div style="display:grid;grid-template-columns:48px repeat(4,minmax(0,1fr));gap:6px">'
-            f'{"".join(cells)}</div></div>')
+            f'{"".join(out)}</div></div>')
 
 
 def render_dd_grid(team_d, league_d, team):
     st.markdown(f"**{team} down & distance tendencies**")
-    html = dd_grid_html(team_d, league_d)
-    if not html:
+    cells = dd_cells(team_d, league_d)
+    if cells.empty:
         st.info("No plays match the current filters.")
         return
-    st.html(html)
-    st.caption(f"Bottom line = most-used formation (and personnel, when charted) and its share of the box. Badge = "
-               f"{TELL_SHARE:.0%}+ one way on {cm.TELL_MIN_N}+ plays, graded by how sure the split is. PROE = how much "
-               f"more often they throw than an average NFL team would in the same spots.")
+    st.html(callouts_html(cells))
+    st.html(dd_grid_html(cells))
+    st.caption("PROE = pass rate over expected: how much more often they throw than an average NFL team would in the "
+               "same spots (down, distance, field position, score, time). Hover a box for the expected and NFL pass "
+               "rates and the most-used formation.")
 
 
 # ---- PROE charts ----------------------------------------------------------------------------------------------
