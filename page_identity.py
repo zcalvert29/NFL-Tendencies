@@ -66,7 +66,7 @@ def team_frame(t: pd.DataFrame, info: pd.DataFrame, highlight: list[str]) -> pd.
 
 # ---- Charts --------------------------------------------------------------------------------------------------
 def index_chart(d: pd.DataFrame, prior: pd.DataFrame | None) -> alt.Chart:
-    """Bars in each team's primary color, the team's logo on top of its bar, last season's index as a tick."""
+    """Bars in each team's primary color with the team's logo on top. Last season's index is in the tooltip."""
     d = d.assign(**{"Last season": d["Team"].map(prior["Unorthodoxy index"]) if prior is not None else np.nan})
     order = list(d.sort_values("Unorthodoxy index", ascending=False)["Team"])
     top = float(d["Unorthodoxy index"].max() * 1.18)
@@ -79,20 +79,14 @@ def index_chart(d: pd.DataFrame, prior: pd.DataFrame | None) -> alt.Chart:
         y=y, color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None))
     logos = base.mark_image(width=LOGO, height=LOGO, baseline="bottom").encode(
         y="Unorthodoxy index:Q", url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None))
-    layers = [bars, logos,
-              alt.Chart(pd.DataFrame({"y": [idn.UNORTHODOX]})).mark_rule(strokeDash=[5, 4], color="#888780")
-              .encode(y="y:Q")]
-    if d["Last season"].notna().any():
-        layers.insert(1, base.mark_tick(color=cm.theme_ink(), thickness=2, size=12, opacity=0.8).encode(
-            y="Last season:Q"))
-    return alt.layer(*layers).properties(height=340)
+    return alt.layer(bars, logos).properties(height=340)
 
 
 def logo_scatter(d: pd.DataFrame, x: str, y: str, x_title: str, y_title: str, x_fmt: str, y_fmt: str,
                  tip_extra: list | None = None, box: tuple[float, float] | None = None, zero_lines: bool = True,
                  trend: bool = False, height: int = 460) -> alt.LayerChart:
-    """One team per point: a dot in the team's color under its logo. box = (half-width x, half-height y) of a
-    gray noise box around 0; trend = least-squares line."""
+    """One team per point, drawn as its logo (a dot in the team's color if the logo couldn't be downloaded).
+    box = (half-width x, half-height y) of a gray noise box around 0; trend = least-squares line."""
     d = d.dropna(subset=[x, y])
     pad_x = (d[x].max() - d[x].min()) * 0.08 or 0.01
     pad_y = (d[y].max() - d[y].min()) * 0.08 or 0.01
@@ -119,45 +113,34 @@ def logo_scatter(d: pd.DataFrame, x: str, y: str, x_title: str, y_title: str, x_
         layers.append(base.transform_regression(x, y).mark_line(color="#888780", strokeDash=[6, 4], strokeWidth=2)
                       .encode(tooltip=alt.value(None)))
     layers += [
-        base.mark_circle(size=900, stroke="white", strokeWidth=1).encode(
+        base.transform_filter("datum.logo == ''").mark_circle(size=500).encode(
             color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None)),
-        base.mark_image(width=34, height=34).encode(url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None)),
+        base.mark_image(width=38, height=38).encode(url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None)),
     ]
     return alt.layer(*layers).properties(height=height)
 
 
-def heatmap(d: pd.DataFrame, situations: list[str], mode: str, z_cut: float) -> alt.Chart:
-    """Teams (rows, by index) × situations: how much more or less they throw there. Purple = more passing, orange
-    = more running. Cells that aren't detectable (|z| under the situational cut) are faded."""
-    rows = []
-    for _, r in d.iterrows():
-        for s in situations:
-            v, z = (r[f"{s}|vs_nfl"], r[f"{s}|z_nfl"]) if mode == "vs NFL" else (r[f"{s}|effect"], r[f"{s}|z"])
-            rows.append({"Team": r["Team"], "name": r["name"], "logo": r["logo"], "Situation": s, "value": v,
-                         "vs NFL": r[f"{s}|vs_nfl"], "beyond lean": r[f"{s}|effect"], "z": z,
-                         "snaps": r[f"{s}|n"], "sure": bool(pd.notna(z) and abs(z) >= z_cut)})
-    h = pd.DataFrame(rows)
-    order = list(d["Team"])
-    lim = 0.30
-    h["label"] = h["value"].map(lambda v: "" if pd.isna(v) else f"{int(round(v * 100)) + 0:+d}")
-    # The logos are the team labels (hover for the name).
-    y = alt.Y("Team:N", sort=order, title=None, axis=alt.Axis(labels=False, ticks=False, domain=False))
-    tip = [alt.Tooltip("name:N", title="Team"), "Situation", alt.Tooltip("vs NFL:Q", format="+.1%"),
-           alt.Tooltip("beyond lean:Q", format="+.1%", title="Beyond their lean"), alt.Tooltip("z:Q", format="+.1f"),
-           alt.Tooltip("snaps:Q", title="Snaps")]
-    base = alt.Chart(h).encode(x=alt.X("Situation:N", sort=situations, title=None,
-                                       axis=alt.Axis(orient="top", labelAngle=-35, labelLimit=180,
-                                                     labelOverlap=False)), y=y, tooltip=tip)
-    cells = base.mark_rect(stroke="white", strokeWidth=0.5).encode(
-        color=alt.Color("value:Q", title="Pass rate, pts", scale=alt.Scale(
-            domain=[-lim, 0, lim], range=[cm.RUN_C, "#F1EFE8", cm.PASS_C], clamp=True),
-            legend=alt.Legend(format="+.0%", orient="bottom", gradientLength=260)),
-        opacity=alt.condition("datum.sure", alt.value(1.0), alt.value(0.4)))
-    text = base.mark_text(fontSize=10).encode(text="label:N", color=alt.condition(
-        f"abs(datum.value) > {lim * 0.6}", alt.value("white"), alt.value("#2C2C2A")))
-    logos = alt.Chart(h.drop_duplicates("Team")).mark_image(width=20, height=20).encode(
-        y=y, url="logo:N", x=alt.value(-14), tooltip=[alt.Tooltip("name:N", title="Team")])
-    return alt.layer(cells, text, logos).properties(height=24 * len(order) + 10)
+def proe_chart(d: pd.DataFrame) -> alt.Chart:
+    """PROE per team: bars in the team's color, up = throws more than expected, down = runs more; the logo sits at
+    the end of each bar."""
+    d = d.assign(PROE=d["Pass rate"] - d["Expected pass rate"])
+    order = list(d.sort_values("PROE", ascending=False)["Team"])
+    lim = float(d["PROE"].abs().max() * 1.3) or 0.05
+    tip = [alt.Tooltip("name:N", title="Team"), alt.Tooltip("PROE:Q", format="+.1%"),
+           alt.Tooltip("Pass rate:Q", format=".1%"), alt.Tooltip("Expected pass rate:Q", format=".1%"),
+           alt.Tooltip("nflfastR PROE:Q", format="+.1%", title="nflfastR's raw PROE"), "Snaps"]
+    x = alt.X("Team:N", sort=order, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="bottom"))
+    y = alt.Y("PROE:Q", title="Pass rate over expected", scale=alt.Scale(domain=[-lim, lim]),
+              axis=alt.Axis(format="+.0%"))
+    base = alt.Chart(d).encode(x=x, tooltip=tip)
+    bars = base.mark_bar(cornerRadius=3).encode(
+        y=y, color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None))
+    up = base.transform_filter("datum.PROE >= 0").mark_image(width=LOGO, height=LOGO, baseline="bottom").encode(
+        y="PROE:Q", url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None))
+    down = base.transform_filter("datum.PROE < 0").mark_image(width=LOGO, height=LOGO, baseline="top").encode(
+        y="PROE:Q", url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None))
+    zero = alt.Chart(pd.DataFrame({"v": [0]})).mark_rule(color="#888780").encode(y="v:Q")
+    return alt.layer(bars, zero, up, down).properties(height=360)
 
 
 # ---- Table ----------------------------------------------------------------------------------------------------
@@ -179,14 +162,14 @@ def display_table(t: pd.DataFrame, prior: pd.DataFrame | None, info: pd.DataFram
     out["Pass rate"], out["Expected pass rate"] = t["Pass rate"], t["Expected pass rate"]
     measures = t.attrs["measures"]
     if "lean" in measures:
-        out["PROE"], out["PROE z"], out["PROE std"] = t["lean_effect"], t["lean_z"], t["lean_std"]
+        out["PROE"], out["PROE std"] = t["lean_effect"], t["lean_std"]
     out["Shotgun rate"], out["Expected shotgun rate"] = t["Shotgun rate"], t["Expected shotgun rate"]
     if "shotgun" in measures:
-        out["Shotgun OE"], out["Shotgun z"], out["Shotgun std"] = t["shotgun_effect"], t["shotgun_z"], t["shotgun_std"]
+        out["Shotgun OE"], out["Shotgun std"] = t["shotgun_effect"], t["shotgun_std"]
     if "3+ WR rate" in t:
         out["3+ WR rate"], out["Expected 3+ WR rate"] = t["3+ WR rate"], t["Expected 3+ WR rate"]
         if "spread" in measures:
-            out["3+ WR OE"], out["3+ WR z"], out["3+ WR std"] = t["spread_effect"], t["spread_z"], t["spread_std"]
+            out["3+ WR OE"], out["3+ WR std"] = t["spread_effect"], t["spread_std"]
         for name in ("2+ TE", "2+ RB"):
             out[f"{name} rate"], out[f"{name} OE"] = t[f"{name} rate"], t[f"{name} over expected"]
         out["Personnel mix distance"], out["Top personnel"] = t["Personnel mix distance"], t["Top personnel"]
@@ -195,11 +178,9 @@ def display_table(t: pd.DataFrame, prior: pd.DataFrame | None, info: pd.DataFram
         for s in t.attrs["situations"]:
             out[f"{s}: vs NFL"] = t[f"{s}|vs_nfl"]
             out[f"{s}: beyond lean"] = t[f"{s}|effect"]
-            out[f"{s}: z"] = t[f"{s}|z"]
     out.index.name = "Team"
     fmt = {c: "{:.1%}" for c in out.columns if "rate" in c.lower() or c == "Personnel mix distance"}
     fmt.update({c: "{:+.1%}" for c in out.columns if c.endswith((" OE", ": vs NFL", ": beyond lean")) or c == "PROE"})
-    fmt.update({c: "{:+.1f}" for c in out.columns if c.endswith((" z", ": z"))})
     fmt.update({c: "{:+.2f}" for c in out.columns if c.endswith(" std") and c != "Situational std"})
     fmt.update({"Unorthodoxy index": "{:.2f}", "Last season index": "{:.2f}", "Situational std": "{:.2f}",
                 "Snaps": "{:,.0f}", "Games": "{:.0f}", "EPA/play": "{:+.3f}", "Success rate": "{:.1%}"})
@@ -261,7 +242,23 @@ For each measure: **z** = standard errors from average, clustered by game (a gam
 league by how noisy it is (empirical Bayes), in units of the real team-to-team spread; noisy situations shrink
 toward 0, so they barely move the index.
 
-**Unorthodoxy index** = root mean square of the Std values. **Profiles:** *Unorthodox* = index ≥
+**Unorthodoxy index** = root mean square of the Std values.
+
+**How to read the index**
+- **The unit is "a typical team-to-team gap."** 1.0 means that, across the measures, the offense sits about one
+  typical gap between NFL offenses away from what an average team would do in the same spots. 2025 Baltimore (1.33):
+  lean −1.51 (run-heavy), shotgun +0.17, personnel −2.13 (heavy), situational 0.46; squared, averaged, and square-rooted,
+  that's 1.33.
+- **It has no direction and no grade.** Pass-heavy and run-heavy both count as unusual, and unusual isn't good or
+  bad. Use the bars, scatters, and table to see *which way* a team is different, and the EPA chart for whether it works.
+- **It never reaches 0 in practice.** The squares can't cancel and some noise survives the shrinkage, so even the most
+  average offenses land around 0.3-0.4. Read it against the league: across 2021-25 the median team is about 0.77, the
+  top quarter 1.07+, the top 10% 1.3+, and the most extreme 1.84 (2024 New Orleans).
+- **It's relative to that season.** Each measure is scaled by that season's real spread between teams, so compare
+  ranks across seasons rather than raw values, and expect the season in progress (fewer games, no personnel yet) to
+  run a little differently.
+
+**Profiles:** *Unorthodox* = index ≥
 {idn.UNORTHODOX:.1f}; *NFL average* = not detectably *and* materially (|Std| ≥ {idn.MATERIAL}) different on anything;
 *Distinct* = in between. Early in a season many teams read as NFL average simply because there isn't enough data yet.
 """
@@ -350,8 +347,55 @@ c[4].metric("Index uses", f"{len(measures)} measures", help=", ".join(LABELS[m] 
 
 st.markdown(f"**Unorthodoxy index, {season} ({week_txt})**")
 st.altair_chart(index_chart(d, prior), width="stretch")
-st.caption(f"Bars in each team's primary color, logo on top. Dashed line = the unorthodox line ({idn.UNORTHODOX:.1f})."
-           + (" Ticks = the same team's index over all of last season." if prior is not None else ""))
+st.caption(f"Bars in each team's primary color, logo on top. {idn.UNORTHODOX:.1f} or higher = unorthodox. Hover a bar "
+           f"for what makes the team different" + (" and its index last season." if prior is not None else "."))
+
+st.markdown("**Each team's score on each measure**")
+score_cols = {m: f"{m}_std" for m in measures if m in idn.MEASURES}
+if idn.SITUATIONAL in measures:
+    score_cols[idn.SITUATIONAL] = "situational_std"
+scores = pd.DataFrame({"Logo": d["logo"].to_numpy(), "Team": d["name"].to_numpy(),
+                       "Unorthodoxy index": d["Unorthodoxy index"].to_numpy(),
+                       **{LABELS[m]: d[c].to_numpy() for m, c in score_cols.items()}}, index=d["Team"].to_numpy())
+# Which measure contributes most to the index (the largest score, either direction).
+scores["Driven by"] = scores[[LABELS[m] for m in score_cols]].abs().idxmax(axis=1)
+score_fmt = {LABELS[m]: "{:.2f}" if m == idn.SITUATIONAL else "{:+.2f}" for m in score_cols}
+st.dataframe(
+    scores.style.format({**score_fmt, "Unorthodoxy index": "{:.2f}"}, na_rep="")
+    .apply(shade_std, subset=list(score_fmt)),
+    width="stretch", hide_index=True, height=36 * (len(scores) + 1) + 2,
+    column_config={"Logo": st.column_config.ImageColumn("", width="small")})
+
+
+def _extremes(col: str) -> str:
+    """'BAL −1.51 … LA +1.68': the lowest and highest score shown, for the writeup."""
+    s = scores[LABELS[col]].dropna()
+    if s.empty:
+        return ""
+    lo, hi = s.idxmin(), s.idxmax()
+    return f" This season's range: {lo} {s[lo]:+.2f} to {hi} {s[hi]:+.2f}."
+
+
+notes = {
+    "lean": "**Lean (PROE)** — how much more often the team throws than an average NFL team would in the same spots. "
+            "Positive = pass-heavy, negative = run-heavy. ±1 is about one typical gap between NFL offenses; beyond ±1.5 "
+            "is among the most lopsided play callers in the league.",
+    "shotgun": "**Shotgun over expected** — how often the team snaps from shotgun compared with what the league does in "
+               "the same down, distance, field position, and score. Positive = more shotgun (spread, quick-game "
+               "offenses), negative = more under center (play action, wide zone, power run games).",
+    "spread": "**3+ WR over expected** — how often the team has three or more receivers on the field compared with the "
+              "league in the same spots. Positive = lighter, spread personnel (lots of 11 or 10); negative = heavier "
+              "personnel (12, 13, 21, fullbacks, extra linemen).",
+    idn.SITUATIONAL: "**Situational play calling** — how unusually the team calls specific situations (1st & 10, 2nd & "
+                     "long, 3rd/4th & 1-2, red zone, after a run, its first 15 snaps, ...) once its overall lean is "
+                     "taken out. It has no sign: 0 = calls each situation the way its overall tendency predicts, "
+                     "higher = more situation-specific habits. Even average teams score about 0.4-0.6 here because some "
+                     "noise survives; above ~0.8 is worth a look, and the table further down shows which situation.",
+}
+st.markdown("\n".join(f"- {notes[m]}" + (_extremes(m) if m in idn.MEASURES else "") for m in score_cols))
+st.caption("Scores are in units of a typical gap between NFL offenses this season, after pulling small samples toward "
+           "the league average. Purple shading = how far from average, either direction. The unorthodoxy index is the "
+           "square root of the average squared score; \"Driven by\" is the measure with the largest score.")
 
 st.markdown("**Offensive EPA per play vs unorthodoxy**")
 r = d["Unorthodoxy index"].corr(d["EPA/play"])
@@ -386,16 +430,12 @@ if pairs:
         st.altair_chart(chart, width="stretch")
         st.caption(note)
 
-if idn.SITUATIONAL in measures:
-    st.markdown("**Situational play-calling map**")
-    mode = st.radio("Show", ["vs NFL", "Beyond their own lean"], horizontal=True, key="id_heat",
-                    help="vs NFL = how much more they throw there than the league does. Beyond their own lean = the "
-                         "same, minus their overall PROE: what the situational measure uses.")
-    z_cut = idn.z_situation(len(t.attrs["situations"]))
-    st.altair_chart(heatmap(d, t.attrs["situations"], mode, z_cut), width="stretch")
-    st.caption(f"Pass rate in each situation compared with the rest of the NFL there, in percentage points: purple = "
-               f"throws more, orange = runs more. Faded cells could be noise (|z| under {z_cut:.1f}, the Bonferroni cut "
-               f"for {len(t.attrs['situations'])} situations). Teams sorted by the index; hover for snaps and z.")
+st.markdown("**Pass rate over expected**")
+st.altair_chart(proe_chart(d), width="stretch")
+st.caption("How much more often each team throws than an average NFL team would in the same spots (down, distance, "
+           "field position, score, time, timeouts), in percentage points. Up = pass-heavy, down = run-heavy. Expected "
+           "= nflfastR's xpass, re-centered on what the rest of the league actually did in the same spots this season, "
+           "so these can differ by a point or two from raw nflfastR PROE on public sites (hover for both).")
 
 st.markdown("**Every team, every value**")
 table, fmt = display_table(t.loc[d["Team"]], prior, info)

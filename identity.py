@@ -209,7 +209,7 @@ def season_table(plays: pd.DataFrame, season: int, settings: Settings = Settings
         lean_all = g["pass_resid"].mean()
         r = {"Snaps": len(g), "Games": g["game_id"].nunique(), "EPA/play": g["epa"].mean(),
              "Success rate": g["success"].mean(), "Pass rate": g["PASS"].mean(),
-             "Expected pass rate": g["exp_pass"].mean()}
+             "Expected pass rate": g["exp_pass"].mean(), "nflfastR PROE": g["pass_oe"].mean() / 100}
         for k in keys:
             label, val, exp = MEASURES[k]
             r[f"{k}_effect"], r[f"{k}_z"], r[f"{k}_se"], _ = _measure(g, val, exp)
