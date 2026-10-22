@@ -32,32 +32,38 @@ the same filters across all 32 teams.
 ### Play-Calling Identity
 
 Which offenses call it unlike an average NFL team in the same spots, and which are NFL average. Every snap is compared
-with what the rest of the league does in that exact spot (regular season, score within 16, outside the last 2
-minutes of a half), on three measures:
+with what the rest of the league does in that exact spot (the team is left out of its own baseline), on four
+measures:
 
 | Measure | Compared with |
 |---|---|
 | **Lean (PROE)** | nflfastR's `xpass`, re-centered on what the rest of the league actually did in the same spots that season (the model was fit on earlier seasons and expects more passing on 3rd/4th & 1-2 than today's NFL does) |
 | **Shotgun over expected** | the rest of the league's shotgun rate in the same down × distance × field zone × score state |
 | **3+ WR personnel over expected** | the rest of the league's 3+ WR rate in the same spots (seasons with FTN charting only) |
+| **Situational play calling** | in 13 situations (1st & 10, 2nd & short/long, 3rd/4th & 1-2, 3rd & medium, red zone, goal to go, backed up, leading, trailing, after a run, after a pass, first 15 snaps): how much more or less the team throws than the rest of the league does there, *beyond its own overall lean* |
 
-Each measure gets a game-clustered z-score (|z| ≥ 2 = detectable) and an empirical-Bayes shrunk value in units of
-the real team-to-team spread. The **unorthodoxy index** is the root mean square of those: 0 = calls it like an
-average team, 1 = one typical team-to-team spread away on each measure. *Unorthodox* = index ≥ 1.0; *NFL average* =
-not detectably and materially (≥ 0.5 spreads) different on any measure; *Distinct* = in between. A measure a season
-doesn't have (personnel in the season in progress) is left out of that season's index and table.
+Each measure gets a game-clustered z-score and an empirical-Bayes shrunk value in units of the real team-to-team
+spread (noisy situations shrink toward 0, so they barely move the index; each situation needs a Bonferroni-adjusted
+z to be flagged). The **unorthodoxy index** is the root mean square of those: 0 = calls it like an average team,
+1 = one typical team-to-team spread away on each measure. *Unorthodox* = index ≥ 1.0; *NFL average* = not detectably
+and materially different on any measure; *Distinct* = in between.
 
-The table lists every value for exploration: pass, shotgun, 3+ WR, 2+ TE, and 2+ RB rates against expected, the
-personnel mix distance, top personnel group, situational PROE against the NFL (early downs, 1st & 10, 2nd & long,
-short yardage, red zone), and last season's rank. A reliability table shows how much of each measure is a real
-team trait (split-half, Spearman-Brown): shotgun and personnel ≈ 0.95, lean 0.70-0.88, short-yardage PROE ≈ 0.6,
-which is why the situational splits are kept out of the index.
+**On the page:** the index as bars in each team's primary color with its logo on top (and last season's index as a
+tick); offensive EPA per play vs the index; lean vs shotgun, lean vs personnel, and lean vs situational play calling;
+a situational play-calling map (team × situation, vs the NFL or beyond the team's own lean); a table of every value;
+and split-half reliabilities. Every chart uses team colors and logos. Logos are downloaded once from ESPN's CDN,
+shrunk, cached in `data/logos/`, and embedded in the charts (a hotlinked image can fail to draw on Vega's canvas).
 
-| 2025 | 2026 (6 weeks, no personnel charting yet) |
+**Sidebar filters:** season (defaults to the latest), week range, score window, last 2 minutes of a half, which
+measures and situations go into the index, and which teams to show (conference, division, profile, highlight).
+A measure a season doesn't have (personnel in the season in progress) is left out of that season's index and table.
+
+| 2026 (default view) | 2025 |
 |---|---|
-| ![2025](docs/identity_2025.png) | ![2026](docs/identity_2026.png) |
+| ![2026](docs/identity_2026.png) | ![2025](docs/identity_2025.png) |
 
-More screenshots, including the full tables, are in [`docs/`](docs/).
+The logos in these two screenshots are stand-in badges (team color and abbreviation): the machine that took them
+couldn't reach ESPN's CDN. The app shows the real logos.
 
 ## Data
 
