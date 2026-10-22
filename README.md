@@ -48,10 +48,14 @@ z to be flagged). The **unorthodoxy index** is the root mean square of those: 0 
 1 = one typical team-to-team spread away on each measure. *Unorthodox* = index ≥ 1.0; *NFL average* = not detectably
 and materially different on any measure; *Distinct* = in between.
 
-**On the page:** the index as bars in each team's primary color with its logo on top (and last season's index as a
-tick); offensive EPA per play vs the index; lean vs shotgun, lean vs personnel, and lean vs situational play calling;
-a situational play-calling map (team × situation, vs the NFL or beyond the team's own lean); a table of every value;
-and split-half reliabilities. Every chart uses team colors and logos. Logos are downloaded once from ESPN's CDN,
+**Reading the index:** the unit is a typical team-to-team gap, so 1.0 = about one typical gap from average across the
+measures. It has no direction (pass-heavy and run-heavy both count) and no grade (unusual isn't good or bad). Even the
+most average offenses land around 0.3-0.4, since squares can't cancel and some noise survives the shrinkage; across
+2021-25 the median team is about 0.77, the top quarter 1.07+, and the top 10% 1.3+.
+
+**On the page:** the index as bars in each team's primary color with its logo on top; offensive EPA per play vs the
+index; lean vs shotgun, lean vs personnel, and lean vs situational play calling (logos only); pass rate over expected
+per team as bars in team colors with logos; a table of every value; and split-half reliabilities. Every chart uses team colors and logos. Logos are downloaded once from ESPN's CDN,
 shrunk, cached in `data/logos/`, and embedded in the charts (a hotlinked image can fail to draw on Vega's canvas).
 
 **Sidebar filters:** season (defaults to the latest), week range, score window, last 2 minutes of a half, which
