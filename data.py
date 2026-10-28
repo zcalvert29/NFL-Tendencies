@@ -19,11 +19,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 RELEASES = "https://github.com/nflverse/nflverse-data/releases/download"
 PBP_URL = RELEASES + "/pbp/play_by_play_{season}.parquet"
 PARTICIPATION_URL = RELEASES + "/pbp_participation/pbp_participation_{season}.parquet"
 TEAMS_URL = RELEASES + "/teams/teams_colors_logos.csv"
+FTN_URL = RELEASES + "/ftn_charting/ftn_charting_{season}.parquet"
+FTN_FIRST_SEASON = 2022      # FTN's charting (motion, play action, RPO, backfield) starts here, in season included
 
 DATA_DIR = Path(__file__).parent / "data"
 FIRST_SEASON = 2016          # participation charting starts here
@@ -37,6 +40,7 @@ PBP_COLUMNS = [
     "interception", "sack", "touchdown", "first_down", "fumble_lost", "epa", "success", "xpass", "pass_oe",
     "fixed_drive", "fixed_drive_result", "passer_player_name", "rusher_player_name", "receiver_player_name", "desc",
 ]
+FTN_COLUMNS = ["is_motion", "is_play_action", "is_rpo", "is_screen_pass", "n_offense_backfield"]
 PARTICIPATION_COLUMNS = ["offense_formation", "offense_personnel", "defenders_in_box", "defense_coverage_type",
                          "defense_man_zone_type"]
 
@@ -73,6 +77,8 @@ def fetch_season(season: int, force: bool = False) -> Path:
     """Download one season (+ participation when published), keep only the columns used, save to data/."""
     path = DATA_DIR / f"pbp_{season}.parquet"
     fresh = path.exists() and (season < current_season() or time.time() - path.stat().st_mtime < REFRESH_HOURS * 3600)
+    if fresh and season >= FTN_FIRST_SEASON and "is_motion" not in pq.read_schema(path).names:
+        fresh = False          # saved before FTN charting was added: download again once
     if fresh and not force:
         return path
     DATA_DIR.mkdir(exist_ok=True)
@@ -89,7 +95,15 @@ def fetch_season(season: int, force: bool = False) -> Path:
         pbp = pbp.merge(part.drop_duplicates(["game_id", "play_id"]), on=["game_id", "play_id"], how="left")
     except (urllib.error.URLError, OSError, KeyError, ValueError):
         pass   # not published yet
-    for c in PARTICIPATION_COLUMNS:
+    if season >= FTN_FIRST_SEASON:
+        try:
+            ftn = pd.read_parquet(io.BytesIO(_download(FTN_URL.format(season=season))))
+            ftn = ftn.rename(columns={"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"})
+            pbp = pbp.merge(ftn[["game_id", "play_id"] + FTN_COLUMNS].drop_duplicates(["game_id", "play_id"]),
+                            on=["game_id", "play_id"], how="left")
+        except (urllib.error.URLError, OSError, KeyError, ValueError):
+            pass
+    for c in PARTICIPATION_COLUMNS + FTN_COLUMNS:
         if c not in pbp.columns:
             pbp[c] = np.nan
     pbp.to_parquet(path, index=False)
@@ -176,6 +190,15 @@ def curate(pbp: pd.DataFrame) -> pd.DataFrame:
     d["Box"] = box.map(lambda b: np.nan if pd.isna(b) else "5 or fewer" if b <= 5 else "8+" if b >= 8 else str(int(b)))
     d["Coverage"] = d["defense_coverage_type"].map(COVERAGE_NAMES)
     d["Man/Zone"] = d["defense_man_zone_type"].map({"MAN_COVERAGE": "Man", "ZONE_COVERAGE": "Zone"})
+
+    # FTN charting (2022 on): motion at the snap and backfield count, both seen before the snap.
+    for c in FTN_COLUMNS:
+        if c not in d.columns:
+            d[c] = np.nan
+    d["Motion"] = d["is_motion"].map({True: "Motion", False: "No motion", 1: "Motion", 0: "No motion"})
+    backs = pd.to_numeric(d["n_offense_backfield"], errors="coerce")
+    d["Backfield"] = backs.map(lambda b: np.nan if pd.isna(b) else "Empty" if b == 0 else "1 back" if b == 1
+                               else "2+ backs")
 
     loc, gap = d["run_location"].astype(object), d["run_gap"].astype(object)
     d["Run Lane"] = np.where(loc == "middle", "Middle",
