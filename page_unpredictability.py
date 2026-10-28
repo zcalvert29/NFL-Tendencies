@@ -474,7 +474,6 @@ def shade_index_balance(col):
 
 
 # ---- At a glance view -----------------------------------------------------------------------------------------
-FOUR_BOX_LINEAR = 0.3   # four-box axes are linear within about ±this many bits per 100 snaps, compressed beyond
 TIER_COLORS = {"Open Book": "#C8321E", "Readable": "#D9822B", "Average": "#8A949A", "Mixes It Up": "#2F8C86",
                "Poker Face": "#3B5EA8"}
 GLANCE_CSS = """<style>
@@ -546,44 +545,21 @@ def board_html(g: pd.DataFrame) -> str:
 
 
 def four_box(g: pd.DataFrame) -> alt.LayerChart:
-    """Lean part (across) vs look part (up), with the four corners named. Most coaches sit near 0 on both and a few sit
-    far out, so both axes use a symmetric log scale: linear near 0 (the pack spreads out), compressed far from it (the
-    outliers stay on the chart without squeezing everyone else into a corner)."""
+    """Lean part (across) vs look part (up), with the four corners named."""
     x, y = "Lean part", "Look part"
-    g = g.dropna(subset=[x, y])
-    pad = lambda s: (s.max() - s.min()) * 0.18 or 0.1   # room for the corner names beyond the outermost logos
-    x0, x1, y0, y1 = g[x].min() - pad(g[x]), g[x].max() + pad(g[x]), g[y].min() - pad(g[y]), g[y].max() + pad(g[y])
-    ticks = [-2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 3, 4, 6]
-    sx = alt.Scale(type="symlog", constant=FOUR_BOX_LINEAR, domain=[x0, x1], nice=False)
-    sy = alt.Scale(type="symlog", constant=FOUR_BOX_LINEAR, domain=[y0, y1], nice=False)
-    ax = lambda lo, hi, title: alt.Axis(values=[t for t in ticks if lo <= t <= hi], format=".2~f", title=title, grid=True)
-    # Name only the points away from the pack; hover names the rest.
-    rank = lambda s: s.rank(pct=True)
-    g = g.assign(show_label=(rank(g[x]) - 0.5).abs().ge(0.4) | (rank(g[y]) - 0.5).abs().ge(0.4))
-    base = alt.Chart(g).encode(
-        x=alt.X(f"{x}:Q", scale=sx, axis=ax(x0, x1, "His overall pass/run lean gives it away →")),
-        y=alt.Y(f"{y}:Q", scale=sy, axis=ax(y0, y1, "His looks give it away →")), tooltip=TIP)
-    mx, my = float(g[x].mean()), float(g[y].mean())
-    rules = [alt.Chart(pd.DataFrame({"v": [mx]})).mark_rule(color="#888780", strokeDash=[4, 4]).encode(
-                 x=alt.X("v:Q", scale=sx)),
-             alt.Chart(pd.DataFrame({"v": [my]})).mark_rule(color="#888780", strokeDash=[4, 4]).encode(
-                 y=alt.Y("v:Q", scale=sy))]
+    pad_x, pad_y = (g[x].max() - g[x].min()) * 0.08 or 0.01, (g[y].max() - g[y].min()) * 0.08 or 0.01
+    x0, x1, y0, y1 = g[x].min() - pad_x, g[x].max() + pad_x, g[y].min() - pad_y, g[y].max() + pad_y
+    chart = logo_scatter(g, x, y, "His overall pass/run lean gives it away →", "His looks give it away →", ".1f", ".1f",
+                         ref=(float(g[x].mean()), float(g[y].mean())))
     corners = pd.DataFrame({"x": [x1, x0, x1, x0], "y": [y1, y1, y0, y0], "align": ["right", "left", "right", "left"],
                             "base": ["top", "top", "bottom", "bottom"],
                             "t": ["TIPS BOTH", "TELLS IN HIS LOOKS", "KNOWN LEAN", "NOTHING TO GO ON"]})
     labels = [alt.Chart(corners.iloc[[i]]).mark_text(align=r.align, baseline=r.base, dx=-8 if r.align == "right" else 8,
                                                      dy=8 if r.base == "top" else -8, fontSize=13, fontWeight="bold",
                                                      opacity=0.45, color=cm.theme_ink())
-              .encode(x=alt.X("x:Q", scale=sx), y=alt.Y("y:Q", scale=sy), text="t:N")
+              .encode(x=alt.X("x:Q", scale=alt.Scale(zero=False)), y=alt.Y("y:Q", scale=alt.Scale(zero=False)), text="t:N")
               for i, r in enumerate(corners.itertuples())]
-    points = [
-        base.transform_filter("datum.logo == ''").mark_circle(size=380).encode(
-            color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None)),
-        base.mark_image(width=30, height=30).encode(url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None)),
-        base.transform_filter("datum.show_label").mark_text(dy=21, fontSize=10, color=cm.theme_ink()).encode(
-            text="label:N", opacity=alt.Opacity("opacity:Q", scale=None)),
-    ]
-    return alt.layer(*rules, *labels, *points).properties(height=560)
+    return alt.layer(chart, *labels)
 
 
 def card_html(r: pd.Series, tl: list[dict], ml: list[dict], avg_given: float, season: int) -> str:
@@ -638,9 +614,7 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
     st.markdown("Two ways a coach tips his hand. **Right:** he leans pass (or run) all the time, so a defense can just "
                 "play the odds. **Up:** his formations, personnel, motion, or the down tell you what's coming.")
     st.altair_chart(four_box(g), width="stretch")
-    st.caption("Dashed lines = the average play caller. The axes stretch the middle, where most coaches are, and squeeze "
-               "the far ends, so the distance between two coaches out at the edge is bigger than it looks. Hover a "
-               "logo for his tier.")
+    st.caption("Dashed lines = the average play caller. Hover a logo for his tier.")
 
     st.subheader("Scouting card")
     order = g.sort_values("Unpredictability index")
