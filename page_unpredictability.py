@@ -473,15 +473,187 @@ def shade_index_balance(col):
     return out
 
 
+# ---- At a glance view -----------------------------------------------------------------------------------------
+TIER_COLORS = {"Open Book": "#C8321E", "Readable": "#D9822B", "Average": "#8A949A", "Mixes It Up": "#2F8C86",
+               "Poker Face": "#3B5EA8"}
+GLANCE_CSS = """<style>
+.gl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.gl-anchor{border:1px solid rgba(128,128,128,.3);border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:center}
+.gl-lbl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.gl-nm{font-size:24px;font-weight:700;line-height:1.15}
+.gl-sub{opacity:.7;font-size:14px}
+.gl-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.gl-board{grid-template-columns:1fr 1fr}}
+@media (max-width:500px){.gl-board{grid-template-columns:1fr}}
+.gl-col{background:rgba(128,128,128,.07);border-radius:10px;padding:12px;border-top:6px solid;min-width:0}
+.gl-col h4{margin:0 0 2px;font-size:18px;text-transform:uppercase;letter-spacing:.03em;padding:0}
+.gl-def{font-size:13px;opacity:.7;line-height:1.35;margin-bottom:8px}
+.gl-chip{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:14px}
+.gl-chip .q{margin-left:auto;opacity:.6;font-family:monospace}
+.gl-badge{flex:none;display:inline-grid;place-items:center;border-radius:50%;font-weight:700;border:2px solid}
+.gl-card{border:1px solid rgba(128,128,128,.3);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:18px}
+.gl-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.gl-pill{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 12px;border-radius:999px;color:#fff}
+.gl-sure{font-size:12px;opacity:.75;border:1px solid rgba(128,128,128,.4);border-radius:999px;padding:2px 10px}
+.gl-verdict{font-size:19px;line-height:1.5;max-width:62ch;margin:0}
+.gl-stat{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.gl-n{font-size:56px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.gl-tells{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.gl-tell{border:1px solid rgba(128,128,128,.3);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.gl-look{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.gl-big{font-size:30px;font-weight:800;line-height:1}
+.gl-big small{font-size:16px;margin-left:4px}
+.gl-bar{position:relative;height:10px;background:rgba(128,128,128,.18);border-radius:5px}
+.gl-bar i{position:absolute;top:0;bottom:0;left:0;border-radius:5px}
+.gl-bar u{position:absolute;top:-4px;bottom:-4px;width:3px;background:currentColor;border-radius:2px}
+.gl-cmp{font-size:13px;opacity:.75}
+.gl-h{font-size:18px;font-weight:700;margin:0}
+</style>"""
+
+
+def badge_html(r: pd.Series, size: int = 26) -> str:
+    """The team logo, or a badge in team colors when the logo couldn't be downloaded."""
+    if r.get("logo"):
+        return f'<img src="{r["logo"]}" width="{size}" height="{size}" alt="{r["Team"]}" style="flex:none">'
+    fg = "#16212B" if _luminance(r["color"]) > 0.5 else "#FFFFFF"
+    return (f'<span class="gl-badge" style="width:{size}px;height:{size}px;font-size:{max(9, size // 3)}px;'
+            f'background:{r["color"]};color:{fg};border-color:{r["color"]}">{r["Team"]}</span>')
+
+
+def anchors_html(g: pd.DataFrame) -> str:
+    def one(r, label):
+        why = (f"film gives away ~{r['Plays given away']:.1f} plays a game" if r["Plays given away"] > 0
+               else "his film misleads a defense")
+        return (f'<div class="gl-anchor">{badge_html(r, 52)}<div style="min-width:0">'
+                f'<div class="gl-lbl" style="color:{TIER_COLORS[r["Tier"]]}">{label}</div>'
+                f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · {why}</div></div></div>')
+    s = g.sort_values("Unpredictability index")
+    return GLANCE_CSS + f'<div class="gl-row">{one(s.iloc[0], "Easiest to read")}{one(s.iloc[-1], "Hardest to read")}</div>'
+
+
+def board_html(g: pd.DataFrame) -> str:
+    cols = []
+    for _, name in up.TIERS:
+        color = TIER_COLORS[name]
+        rows = g[g["Tier"] == name].sort_values("Unpredictability index")
+        chips = "".join(f'<div class="gl-chip">{badge_html(r)}<span>{r["Play caller"]}</span>'
+                        f'{"<span class=q title=&quot;Too close to call&quot;>~</span>" if r["Sure"] == "Too close to call" else ""}'
+                        f'</div>' for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
+        cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
+                    f'<div class="gl-def">{up.TIER_HELP[name]}</div>{chips}</div>')
+    return GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
+
+
+def four_box(g: pd.DataFrame) -> alt.LayerChart:
+    """Lean part (across) vs look part (up), with the four corners named."""
+    x, y = "Lean part", "Look part"
+    pad_x, pad_y = (g[x].max() - g[x].min()) * 0.08 or 0.01, (g[y].max() - g[y].min()) * 0.08 or 0.01
+    x0, x1, y0, y1 = g[x].min() - pad_x, g[x].max() + pad_x, g[y].min() - pad_y, g[y].max() + pad_y
+    chart = logo_scatter(g, x, y, "His overall pass/run lean gives it away →", "His looks give it away →", ".1f", ".1f",
+                         ref=(float(g[x].mean()), float(g[y].mean())))
+    corners = pd.DataFrame({"x": [x1, x0, x1, x0], "y": [y1, y1, y0, y0], "align": ["right", "left", "right", "left"],
+                            "base": ["top", "top", "bottom", "bottom"],
+                            "t": ["TIPS BOTH", "TELLS IN HIS LOOKS", "KNOWN LEAN", "NOTHING TO GO ON"]})
+    labels = [alt.Chart(corners.iloc[[i]]).mark_text(align=r.align, baseline=r.base, dx=-8 if r.align == "right" else 8,
+                                                     dy=8 if r.base == "top" else -8, fontSize=13, fontWeight="bold",
+                                                     opacity=0.45, color=cm.theme_ink())
+              .encode(x=alt.X("x:Q", scale=alt.Scale(zero=False)), y=alt.Y("y:Q", scale=alt.Scale(zero=False)), text="t:N")
+              for i, r in enumerate(corners.itertuples())]
+    return alt.layer(chart, *labels)
+
+
+def card_html(r: pd.Series, tl: list[dict], ml: list[dict], avg_given: float, season: int) -> str:
+    color = TIER_COLORS[r["Tier"]]
+    g = r["Plays given away"]
+    stat = ("plays a game his film gives away to a defense that studied it." if g > 0 else
+            "plays a game: studying his film makes a defense's guesses slightly worse.")
+    head = (f'<div class="gl-head">{badge_html(r, 56)}<div style="min-width:0"><div class="gl-nm" style="font-size:30px">'
+            f'{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · {season} · weeks {r["Weeks"]}</div></div>'
+            f'<span class="gl-pill" style="background:{color}">{r["Tier"]}</span>'
+            f'<span class="gl-sure">{"Clear result" if r["Sure"] == "Clear" else r["Sure"]}</span></div>')
+    body = (f'<p class="gl-verdict">{up.verdict(r, tl, ml)}</p>'
+            f'<div class="gl-stat"><span class="gl-n" style="color:{color}">{g:.1f}</span>'
+            f'<span>{stat} The average coach: {avg_given:.1f}.</span></div>')
+    if tl:
+        cards = "".join(
+            f'<div class="gl-tell"><span class="gl-look">{t["look"]}</span>'
+            f'<span class="gl-big" style="color:{"#3B5EA8" if t["call"] == "PASS" else "#D9822B"}">{t["rate"]:.0%}'
+            f'<small>{t["call"]}</small></span><div class="gl-bar"><i style="width:{t["rate"] * 100:.0f}%;'
+            f'background:{"#3B5EA8" if t["call"] == "PASS" else "#D9822B"}"></i>'
+            f'<u style="left:calc({t["league"] * 100:.0f}% - 1px)"></u></div>'
+            f'<span class="gl-cmp">Average team: {t["league"]:.0%} · {t["snaps"]} plays</span></div>' for t in tl)
+        body += (f'<div><p class="gl-h">What gives him away</p></div><div class="gl-tells">{cards}</div>'
+                 '<div class="gl-cmp">Bar = how often he made that call; mark = an average team in the same spots.</div>')
+    else:
+        body += '<div><p class="gl-h">What gives him away</p><div class="gl-cmp">No single look gives him away by 7 points or more.</div></div>'
+    if ml:
+        cards = "".join(
+            f'<div class="gl-tell"><span class="gl-look">{m["look"]}</span><span class="gl-cmp">Earlier games said</span>'
+            f'<span class="gl-big" style="font-size:24px">pass {m["film"]:.0%}</span>'
+            f'<span class="gl-cmp">The next games: <b>pass {m["actual"]:.0%}</b> · {m["snaps"]} plays</span></div>'
+            for m in ml)
+        body += f'<div><p class="gl-h">Where his film fools you</p></div><div class="gl-tells">{cards}</div>'
+    return GLANCE_CSS + f'<div class="gl-card">{head}{body}</div>'
+
+
+def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int, rel: float) -> None:
+    g = ranked.copy()
+    g["Tier"] = g["Unpredictability index"].map(up.tier)
+    g["Sure"] = up.certainty(g)
+    if pd.isna(rel) or rel < 0.3:
+        st.warning("It's early: there isn't enough film yet to tell most coaches apart. Treat these tiers as a first "
+                   "look; they settle down over a full season.")
+    st.html(anchors_html(g))
+
+    st.subheader("Every play caller, by tier")
+    st.html(board_html(g))
+    st.caption("~ = too close to call: his result is within the normal ups and downs, so he could sit a tier either "
+               "side. Pick any coach below for his scouting card.")
+
+    st.subheader("What gives him away?")
+    st.markdown("Two ways a coach tips his hand. **Right:** he leans pass (or run) all the time, so a defense can just "
+                "play the odds. **Up:** his formations, personnel, motion, or the down tell you what's coming.")
+    st.altair_chart(four_box(g), width="stretch")
+    st.caption("Dashed lines = the average play caller. Hover a logo for his tier.")
+
+    st.subheader("Scouting card")
+    order = g.sort_values("Unpredictability index")
+    labels = {f"{r['Play caller']} ({r['Team']}) · {r['Tier']}": i for i, r in order.iterrows()}
+    pick = st.selectbox("Play caller", list(labels), key=f"up_glance_{season}",
+                        help="Sorted from easiest to hardest to read.")
+    r = g.loc[labels[pick]]
+    looks = up.look_table(d_snaps, r["Team"], r["Play caller"], clues)
+    st.html(card_html(r, up.tells(looks), up.misleads(looks), float(g["Plays given away"].mean()), season))
+    with st.expander("Show the math"):
+        math = pd.DataFrame({"": [
+            "Unpredictability index (50 = average)", "Film edge, bits per 100 snaps", "…from his overall lean",
+            "…from his looks", "Lean (pass rate vs expected)", "Right guesses: league scout → film scout",
+            "Scored snaps", "Offensive EPA per play"], "Value": [
+            f"{r['Unpredictability index']:.0f}", f"{r['Film edge']:+.2f} ± {2 * r['Edge SE'] * 100:.2f}",
+            f"{r['Lean part']:+.2f}", f"{r['Look part']:+.2f}", f"{r['Lean']:+.1%}",
+            f"{r['Generic accuracy']:.0%} → {r['Film accuracy']:.0%}", f"{int(r['Scored snaps']):,}",
+            f"{r['EPA/play']:+.3f}"]})
+        st.dataframe(math, hide_index=True, width="content")
+        st.caption("Switch View to **Show the math** in the sidebar for every coach's numbers and the charts behind them.")
+    st.caption("**How it's measured.** Two computer scouts guess every snap from what a defense sees before it: down "
+               "and distance, field position, score, formation, personnel, motion, backs in the backfield, and the "
+               "last call. One knows only how the whole NFL plays; the other also studies this coach's earlier games "
+               "(never later ones). Plays a game his film gives away = how much of the guessing studying him removes, "
+               "counted in plays. Tiers by index: 40 or less = Open Book, 40-46 Readable, 46-54 Average, 54-60 Mixes It "
+               "Up, over 60 Poker Face.")
+
+
 # ---- Page ----------------------------------------------------------------------------------------------------
 seasons = dt.available_seasons()
 info = team_info()
 callers_csv = up.load_callers()
 with st.sidebar:
     st.header("Unpredictability Index")
-    view = st.segmented_control("View", ["Film index", "Balance score"], default="Film index", key="up_view",
-                                help="Film index: how much a defense learns from his earlier games. Balance score: "
-                                     "how close to 50/50 he calls each down & distance.") or "Film index"
+    view = st.segmented_control("View", ["At a glance", "Show the math", "Balance score"], default="At a glance",
+                                key="up_view",
+                                help="At a glance: tiers, what gives each coach away, and a scouting card, in plain "
+                                     "words. Show the math: every number behind them. Balance score: how close to "
+                                     "50/50 he calls each down & distance.") or "At a glance"
     st.session_state.setdefault("up_season", seasons[-1])
     season = st.selectbox("Season", seasons[::-1], key="up_season")
     season_plays = plays(season)
@@ -497,7 +669,7 @@ with st.sidebar:
                                     help="Play callers: a mid-season change of play caller starts a new film study. "
                                          "Teams: one film study per team for the whole range.")
     by = "team" if by_label == "Teams" else "caller"
-    min_snaps = st.slider("Minimum scored snaps to show" if view == "Film index" else "Minimum snaps to show",
+    min_snaps = st.slider("Minimum scored snaps to show" if view != "Balance score" else "Minimum snaps to show",
                           0, 600, up.MIN_SNAPS, 25, key="up_min",
                           help=f"Index needs {up.MIN_SNAPS}+; lower shows short stints without an index.")
     highlight = st.multiselect("Highlight teams", sorted(season_plays["posteam"].dropna().unique()), key="up_hl",
@@ -508,11 +680,17 @@ if view == "Balance score":
     render_balance(season, week_range, by, min_snaps, highlight)
     st.stop()
 
-st.title("Unpredictability Index")
-st.caption("How much a defense learns by studying a play caller's film: which coaches give their calls away, which "
-           "don't, and the looks that tell on them.")
-with st.expander("How this is measured"):
-    st.markdown(DEFINITIONS)
+if view == "At a glance":
+    st.title("Can you read his calls?")
+    st.markdown("We had a computer study every play caller's earlier games, then guess run or pass on his next ones. "
+                "If studying his film helps the guess, he's readable. If it doesn't, or it leads you the wrong way, "
+                "he's hard to read.")
+else:
+    st.title("Unpredictability Index")
+    st.caption("How much a defense learns by studying a play caller's film: which coaches give their calls away, "
+               "which don't, and the looks that tell on them.")
+    with st.expander("How this is measured"):
+        st.markdown(DEFINITIONS)
 try:
     d_snaps, clues = scored(season, week_range, by)
 except Exception as e:
@@ -526,7 +704,7 @@ if t.empty or t["Unpredictability index"].isna().all():
 if by == "caller" and not (callers_csv["season"] == season).any():
     st.info(f"The play-caller list doesn't cover {season} yet, so each team is one play caller here. Add rows to "
             "play_callers.csv to split teams by play caller.")
-if "personnel" not in clues:
+if "personnel" not in clues and view != "At a glance":
     st.info("No personnel charting for this season yet (nflverse publishes it after the season), so personnel isn't a "
             "clue. Motion and backfield count are." if {"motion", "backfield"} & set(clues) else
             "No personnel charting for this season, so personnel isn't a clue.")
@@ -535,6 +713,9 @@ d_all = with_team(t, info, highlight, by)
 d = d_all[d_all["Scored snaps"] >= min_snaps]
 ranked = d[d["Unpredictability index"].notna()]
 rel = up.reliability(d_snaps)
+if view == "At a glance":
+    render_glance(ranked, d_snaps, clues, season, rel)
+    st.stop()
 
 counts = ranked["Profile"].value_counts()
 c = st.columns(5)
