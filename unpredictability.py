@@ -322,43 +322,136 @@ def reliability(d: pd.DataFrame) -> float:
 # from 50/50, minus the part of it a small sample adds by chance; averaged over cells weighted by snaps; flipped so
 # 100 = a coin flip in every cell and 0 = the same call every time. Obvious passing downs (3rd/4th & 7+) are left out:
 # every team throws there, so they say nothing about the caller and only punish offenses that face more of them.
-BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & long", "4th & extra long")
+# 4th & medium is left out too (a handful of snaps a season, nearly all passes). 3rd & medium stays on purpose: most
+# coaches throw there, and the ones who don't are treating 3rd & 4-6 as the first of two downs, planning to go for it
+# on 4th, which is exactly the kind of habit this page is for.
+BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & medium", "4th & long", "4th & extra long")
 BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd", "3rd", "4th")
                  for dist in dt.DISTANCE_ORDER]
 BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
+BALANCE_TIERS = [(0.62, "Coin Flip"), (0.65, "Balanced"), (0.68, "Average"), (0.71, "Leans"), (1.0, "Lopsided")]
+# Split by shotgun vs under center, every caller looks about 5 points more lopsided (formation tells a lot), so the
+# tiers move up with it; otherwise nearly everyone would be Lopsided.
+BALANCE_TIERS_BY_FORMATION = [(0.67, "Coin Flip"), (0.70, "Balanced"), (0.73, "Average"), (0.76, "Leans"),
+                              (1.0, "Lopsided")]
+BALANCE_TIER_HELP = {"Coin Flip": "Close to 50/50 almost every down.", "Balanced": "Hard to call on most downs.",
+                     "Average": "About as balanced as a typical coach.", "Leans": "Leans one way on several downs.",
+                     "Lopsided": "Easy to call by down & distance."}
 
 
-def balance_cells(d: pd.DataFrame) -> pd.DataFrame:
-    """Per stint (team + caller) and decision-down cell: snaps, pass rate, and the noise-corrected squared gap from
-    50/50, (p - 0.5)^2 - p(1 - p)/(n - 1). The correction is the expected chance part of the gap, so a 4-snap cell
-    that went 3-1 isn't scored as a lopsided tendency."""
-    c = (d[d["dd"].isin(BALANCE_CELLS)].groupby(["posteam", "caller", "dd"])["PASS"]
-         .agg(["mean", "size"]).rename(columns={"mean": "Pass rate", "size": "Snaps"}).reset_index())
+def typical_split(score: float) -> float:
+    """The balance score as a typical call: the larger side of his typical decision down, e.g. 0.68 = a 68/32 call.
+    The score is 100 * (1 - 4 * the snap-weighted mean squared gap from 50/50), so the typical (root mean square) gap
+    is sqrt((1 - score/100) / 4)."""
+    return 0.5 + np.sqrt(max(0.0, (1 - score / 100) / 4))
+
+
+def balance_tier(score: float, by_formation: bool = False) -> str:
+    split = typical_split(score)
+    return next(name for top, name in (BALANCE_TIERS_BY_FORMATION if by_formation else BALANCE_TIERS) if split <= top)
+
+
+def split_text(hi: float) -> str:
+    """0.68 -> '68/32'."""
+    return f"{hi * 100:.0f}/{100 - round(hi * 100)}"
+
+
+def balance_cells(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
+    """Per stint (team + caller) and decision-down cell: snaps, pass rate, PROE, and the noise-corrected squared gap
+    from 50/50, (p - 0.5)^2 - p(1 - p)/(n - 1). The correction is the expected chance part of the gap, so a 4-snap
+    cell that went 3-1 isn't scored as a lopsided tendency. by_formation splits every cell by shotgun vs under center
+    (what a defense sees before the snap). Cost = the points that cell takes off his score; they add up to 100 - score."""
+    x = d[d["dd"].isin(BALANCE_CELLS)].copy()
+    gun = x["shotgun"] == 1 if "shotgun" in x else x.get("Formation", pd.Series("", index=x.index)).eq("Shotgun")
+    x["Formation"] = np.where(gun, "Shotgun", "Under center") if by_formation else "All"
+    x["proe"] = x["pass_oe"] / 100 if "pass_oe" in x else np.nan
+    c = (x.groupby(["posteam", "caller", "dd", "Formation"])
+         .agg(**{"Pass rate": ("PASS", "mean"), "Snaps": ("PASS", "size"), "PROE": ("proe", "mean")}).reset_index())
     p, n = c["Pass rate"], c["Snaps"]
     c["Gap"] = (p - 0.5) ** 2 - np.where(n > 1, p * (1 - p) / (n - 1).clip(lower=1), 0.0)
+    total = c.groupby(["posteam", "caller"])["Snaps"].transform("sum")
+    c["Cost"] = 400 * c["Snaps"] * c["Gap"] / total
+    c["cell"] = c["dd"] if not by_formation else c["dd"] + " · " + c["Formation"].str.lower()
     return c
 
 
-def balance_table(d: pd.DataFrame) -> pd.DataFrame:
-    """One row per stint: the balance score, its raw (uncorrected) version, and the most and least balanced
-    decision-down cells (8+ snaps)."""
-    c = balance_cells(d)
+def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
+    """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, and the
+    cells that cost him the most and the least (8+ snaps)."""
+    c = balance_cells(d, by_formation)
     rows = []
     for (team, caller), g in c.groupby(["posteam", "caller"], sort=False):
         n = g["Snaps"].sum()
         raw = (g["Snaps"] * (g["Pass rate"] - 0.5) ** 2).sum() / n
         big = g[g["Snaps"] >= 8]
-        worst = big.loc[(big["Pass rate"] - 0.5).abs().idxmax()] if len(big) else None
+        worst = big.loc[big["Cost"].idxmax()] if len(big) else None
         best = big.loc[(big["Pass rate"] - 0.5).abs().idxmin()] if len(big) else None
-        rows.append({"Team": team, "Play caller": caller, "Snaps": int(n),
-                     "Balance score": 100 * (1 - 4 * (g["Snaps"] * g["Gap"]).sum() / n),
+        score = 100 - g["Cost"].sum()
+        rows.append({"Team": team, "Play caller": caller, "Snaps": int(n), "Balance score": score,
+                     "Typical split": typical_split(score), "Balance tier": balance_tier(score, by_formation),
                      "Raw balance score": 100 * (1 - 4 * raw),
                      "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
-                     "Most lopsided": "" if worst is None else f"{worst['dd']}: {worst['Pass rate']:.0%} pass",
-                     "Most balanced": "" if best is None else f"{best['dd']}: {best['Pass rate']:.0%} pass"})
+                     "Most lopsided": "" if worst is None else f"{worst['cell']}: {worst['Pass rate']:.0%} pass",
+                     "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass"})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
 
+
+def balance_reliability(d: pd.DataFrame, by_formation: bool = False, min_snaps: int = MIN_SNAPS) -> float:
+    """Split-half reliability of the balance score: each stint's score in its odd vs even games, correlated across
+    stints and stepped up to the full sample (Spearman-Brown)."""
+    game_no = d.groupby(["posteam", "caller"])["Week"].rank(method="dense")
+    halves = [balance_table(d[game_no % 2 == k], by_formation).set_index(["Team", "Play caller"]) for k in (0, 1)]
+    h = pd.concat({k: x for k, x in enumerate(halves)}, axis=1)
+    h = h[(h[(0, "Snaps")] + h[(1, "Snaps")]) >= min_snaps].dropna()
+    if len(h) < 5:
+        return np.nan
+    r = h[(0, "Balance score")].corr(h[(1, "Balance score")])
+    return 2 * r / (1 + r)
+
+
+THIRD_MEDIUM_GAP = 0.08   # throwing this much less than the league on 3rd & medium = playing it as a two-down set
+
+
+def third_medium(cells: pd.DataFrame) -> pd.DataFrame:
+    """Per stint: 3rd & medium snaps and pass rate (formation split folded back together)."""
+    c = cells[cells["dd"] == "3rd & medium"].assign(passes=lambda x: x["Pass rate"] * x["Snaps"])
+    t = c.groupby(["posteam", "caller"])[["passes", "Snaps"]].sum()
+    return t.assign(**{"Pass rate": t["passes"] / t["Snaps"]}).drop(columns="passes").reset_index()
+
+
+def balance_verdict(r: pd.Series, cells: pd.DataFrame, league_third: float | None = None) -> str:
+    """Plain sentences: his typical call, the downs that cost him the most, 3rd & medium if he plays it as a two-down
+    set (throws THIRD_MEDIUM_GAP+ less than the league there), and his most balanced down."""
+    last = str(r["Play caller"]).split()[-1] if not str(r["Play caller"]).endswith(" play caller") else r["Team"]
+    hi = r["Typical split"]
+    head = f"{last}'s typical decision down is a {split_text(hi)} call."
+    big = cells[cells["Snaps"] >= 8]
+    third = third_medium(cells)
+    two_down = (league_third is not None and len(third) and third["Snaps"].iat[0] >= 8
+                and third["Pass rate"].iat[0] <= league_third - THIRD_MEDIUM_GAP)
+    # When 3rd & medium gets its own sentence below, don't also list it among his costliest downs.
+    worst = big[(big["Cost"] > 0.5) & ~((big["dd"] == "3rd & medium") & two_down)].nlargest(2, "Cost")
+    parts = [head]
+    if len(worst):
+        spots = [("throws" if w["Pass rate"] >= 0.5 else "runs", max(w["Pass rate"], 1 - w["Pass rate"]), w["cell"])
+                 for _, w in worst.iterrows()]
+        if len(spots) == 2 and spots[0][0] == spots[1][0]:
+            said = f"He {spots[0][0]} {spots[0][1]:.0%} on {spots[0][2]} and {spots[1][1]:.0%} on {spots[1][2]}"
+        else:
+            said = "He " + " and ".join(f"{v} {p:.0%} on {c}" for v, p, c in spots)
+        share = worst["Cost"].sum() / max(cells["Cost"].clip(lower=0).sum(), 1e-9)
+        parts.append(f"{said}; {'those two downs account' if len(spots) > 1 else 'that down accounts'} for {share:.0%} "
+                     "of the balance he gives up.")
+    if two_down:
+        p = third["Pass rate"].iat[0]
+        parts.append(f"On 3rd & medium he throws {p:.0%} (league {league_third:.0%}): he plays it as the first of "
+                     "two downs, ready to go for it on 4th.")
+    if len(big):
+        b = big.loc[(big["Pass rate"] - 0.5).abs().idxmin()]
+        if abs(b["Pass rate"] - 0.5) <= 0.06:
+            parts.append(f"His true coin flip: {b['cell']} ({b['Pass rate']:.0%} pass).")
+    return " ".join(parts)
 
 
 # ---- Plain-language summary ("At a glance" view) ----------------------------------------------------------------
