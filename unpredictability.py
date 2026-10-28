@@ -246,6 +246,9 @@ def caller_table(d: pd.DataFrame, clues: list[str]) -> pd.DataFrame:
                "Generic accuracy": ((s["p_league"] > 0.5) == (y == 1)).mean(),
                "Film accuracy": ((s["p_film"] > 0.5) == (y == 1)).mean()}
         row["Uncertainty removed"] = row["Edge"] / row["Generic bits"]
+        # The film edge in plays: the share of the guessing his film removes, times his scored snaps per game. 2.7 =
+        # studying him is worth about 2.7 calls a game a defense would know for sure.
+        row["Plays given away"] = row["Uncertainty removed"] * len(s) / s["game_id"].nunique()
         for k in clues:
             row[CLUES[k][0]] = s[f"gain_film_{k}"].mean()
         rows.append(row)
@@ -355,3 +358,117 @@ def balance_table(d: pd.DataFrame) -> pd.DataFrame:
                      "Most balanced": "" if best is None else f"{best['dd']}: {best['Pass rate']:.0%} pass"})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
+
+
+
+# ---- Plain-language summary ("At a glance" view) ----------------------------------------------------------------
+TIERS = [(40, "Open Book"), (46, "Readable"), (54, "Average"), (60, "Mixes It Up"), (np.inf, "Poker Face")]
+TIER_HELP = {"Open Book": "His film clearly helps a defense.", "Readable": "His film helps a bit more than most.",
+             "Average": "About what a typical coach gives away.", "Mixes It Up": "His film barely helps a defense.",
+             "Poker Face": "His film doesn't help, or it fools you."}
+TELL_MIN_GAP = 0.07       # a tell must differ from the average team by this much...
+TELL_MIN_SNAPS = 20       # ...on at least this many snaps
+CLUE_WORDS = {"Personnel": "his personnel groupings", "Formation": "his formation", "Motion": "motion",
+              "Backfield": "how many backs he lines up", "Down & distance": "down and distance",
+              "Field position": "field position", "Score": "the score", "Last call": "what he called the snap before"}
+
+
+def tier(index: float) -> str:
+    return next(name for top, name in TIERS if index <= top)
+
+
+def certainty(t: pd.DataFrame) -> pd.Series:
+    """How sure each caller's tier is: his edge vs the average caller's, in standard errors."""
+    z = (t["Edge"] - t["Edge"].mean()).abs() / t["Edge SE"]
+    return pd.Series(np.select([z > 2, z > 1], ["Clear", "Probably"], "Too close to call"), index=t.index)
+
+
+def look_name(clue: str, look: str) -> str:
+    """'11' -> '11 personnel', 'Motion' -> 'With motion', 'Leading 4+' -> 'Leading by 4+'."""
+    if clue == "Personnel":
+        return f"{look} personnel"
+    if clue == "Motion":
+        return "With motion" if look == "Motion" else "No motion"
+    if clue == "Score":
+        return {"Leading 4+": "Leading by 4+", "Trailing 4+": "Trailing by 4+", "Within 3": "Within 3 points"}.get(look, look)
+    if clue == "Backfield" and look == "Empty":
+        return "Empty backfield"
+    return str(look)
+
+
+def look_phrase(clue: str, look: str) -> str:
+    """The look as a sentence opener: 'In 11 personnel', 'From shotgun', 'On 3rd & short', 'After a run'."""
+    look = str(look)
+    if clue == "Personnel":
+        return f"In {look} personnel"
+    if clue == "Formation":
+        return "From under center" if look == "Under center" else f"From {look.lower() if look != 'I-form' else 'the I-form'}"
+    if clue == "Motion":
+        return "With motion" if look == "Motion" else "Without motion"
+    if clue == "Backfield":
+        return {"Empty": "From an empty backfield", "1 back": "With 1 back", "2+ backs": "With 2+ backs"}.get(look, look)
+    if clue == "Down & distance":
+        return f"On {look}"
+    if clue == "Field position":
+        return {"Red zone": "In the red zone", "Midfield": "Between the 20s", "Own end": "In his own end"}.get(look, look)
+    if clue == "Score":
+        return {"Leading 4+": "When leading by 4+", "Trailing 4+": "When trailing by 4+",
+                "Within 3": "In a one-score-or-less game"}.get(look, look)
+    if clue == "Last call":
+        return look[0].upper() + look[1:]
+    return look
+
+
+def tells(looks: pd.DataFrame, n: int = 3) -> list[dict]:
+    """His biggest tells from look_table: looks where his film read him and he clearly differs from an average team.
+    Each: look, call (PASS/RUN, whichever he does more than average), rate (how often he made that call), league."""
+    lt = looks[(looks["Snaps"] >= TELL_MIN_SNAPS) & (looks["Edge share"] > 0.3)
+               & ((looks["Pass rate"] - looks["NFL scout expected"]).abs() >= TELL_MIN_GAP)]
+    out = []
+    for _, x in lt.nlargest(n, "Edge share").iterrows():
+        passy = x["Pass rate"] >= x["NFL scout expected"]
+        out.append({"look": look_name(x["Clue"], x["Look"]), "phrase": look_phrase(x["Clue"], x["Look"]), "call": "PASS" if passy else "RUN",
+                    "rate": x["Pass rate"] if passy else 1 - x["Pass rate"],
+                    "league": x["NFL scout expected"] if passy else 1 - x["NFL scout expected"], "snaps": int(x["Snaps"])})
+    return out
+
+
+def misleads(looks: pd.DataFrame, n: int = 2) -> list[dict]:
+    """Looks where his earlier film pointed one way and his next games went another (by 5+ points)."""
+    lt = looks[(looks["Snaps"] >= TELL_MIN_SNAPS) & (looks["Edge share"] < -0.3)
+               & ((looks["Pass rate"] - looks["Their film said"]).abs() >= 0.05)]
+    return [{"look": look_name(x["Clue"], x["Look"]), "phrase": look_phrase(x["Clue"], x["Look"]), "film": x["Their film said"], "actual": x["Pass rate"],
+             "snaps": int(x["Snaps"])} for _, x in lt.nsmallest(n, "Edge share").iterrows()]
+
+
+def verdict(r: pd.Series, tl: list[dict], ml: list[dict]) -> str:
+    """One or two plain sentences on why a caller lands in his tier."""
+    last = str(r["Play caller"]).split()[-1] if not str(r["Play caller"]).endswith(" play caller") else r["Team"]
+    tell = ""
+    if tl:
+        t = tl[0]
+        verb = "throws" if t["call"] == "PASS" else "runs"
+        tell = (f" {t['phrase']}, he {verb} {t['rate']:.0%} of the time; an average team would {verb[:-1]} "
+                f"{t['league']:.0%}.")
+    name = tier(r["Unpredictability index"])
+    if name in ("Open Book", "Readable"):
+        if r["Lean edge"] >= r["Look edge"] and abs(r["Lean"]) >= 0.04:
+            word = "pass" if r["Lean"] > 0 else "run"
+            return (f"{last} {'throws' if r['Lean'] > 0 else 'runs'} more than an average team would in almost every "
+                    f"situation, by about {abs(r['Lean']) * 100:.0f} percentage points. A defense that leans {word} "
+                    f"against him is right more than it should be.{tell}")
+        how = f", most of all {CLUE_WORDS.get(r['Biggest tell'], str(r['Biggest tell']).lower())}" \
+            if r["Biggest tell"] != "None" else ""
+        return f"{last} tips his calls with what he shows before the snap{how}.{tell}"
+    if name == "Average":
+        return (f"{last} calls it close to how the league does. His film gives a defense a little, but nothing that "
+                f"stands out." + (f" The one thing to watch: {tell[1].lower()}{tell[2:]}" if tell else ""))
+    miss = ""
+    if ml:
+        m = ml[0]
+        phrase = m["phrase"][0].lower() + m["phrase"][1:]
+        miss = (f" His earlier games said he'd throw {m['film']:.0%} of the time {phrase}; in the games that "
+                f"followed he threw {m['actual']:.0%}.")
+    if name == "Mixes It Up":
+        return f"{last}'s film barely helps. The habits he showed in earlier games mostly didn't hold up.{miss}"
+    return f"{last}'s film works against you: what he did in earlier games isn't what he did next.{miss}"

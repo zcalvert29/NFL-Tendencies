@@ -113,3 +113,29 @@ def test_balance_correction_removes_chance():
     c = up.balance_cells(rows)
     # 3 of 4: raw gap (0.75 - 0.5)^2 = 0.0625, chance part 0.75 * 0.25 / 3 = 0.0625, so no tendency left yet.
     assert np.isclose(c["Gap"].iloc[0], 0.0)
+
+
+def test_tiers_and_phrases():
+    assert [up.tier(i) for i in (14, 40, 43, 50, 57, 60, 64)] == [
+        "Open Book", "Open Book", "Readable", "Average", "Mixes It Up", "Mixes It Up", "Poker Face"]
+    assert up.look_name("Personnel", "11") == "11 personnel"
+    assert up.look_phrase("Personnel", "11") == "In 11 personnel"
+    assert up.look_phrase("Down & distance", "3rd & short") == "On 3rd & short"
+    assert up.look_phrase("Formation", "Under center") == "From under center"
+    assert up.look_phrase("Last call", "After a run") == "After a run"
+
+
+def test_plain_language_summary_for_a_tell_team():
+    d, clues = up.score(league(), 2025, callers=NO_CALLERS)
+    t = up.caller_table(d, clues).set_index("Team", drop=False)
+    r = t.loc["TELL"]
+    assert up.tier(r["Unpredictability index"]) == "Open Book"
+    assert r["Plays given away"] > 5 > t.drop("TELL")["Plays given away"].max()
+    looks = up.look_table(d, "TELL", "TELL play caller", clues)
+    found = {x["look"]: x for x in up.tells(looks)}
+    assert {"Shotgun", "Under center"} <= set(found)
+    assert found["Shotgun"]["call"] == "PASS" and found["Shotgun"]["rate"] == 1.0
+    assert found["Under center"]["call"] == "RUN"
+    text = up.verdict(r, up.tells(looks), up.misleads(looks))
+    assert text.startswith("TELL ") and "formation" in text
+    assert up.certainty(t)["TELL"] == "Clear"

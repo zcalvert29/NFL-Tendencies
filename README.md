@@ -109,6 +109,25 @@ says so.
 
 These screenshots also use stand-in logo badges.
 
+#### At a glance (default view)
+
+The same film index in plain words, for anyone who watches football. Pick **View** in the sidebar to switch between
+**At a glance**, **Show the math** (every number and chart described above), and **Balance score**.
+
+- **Tiers** instead of scores: *Open Book* (index 40 or less), *Readable*, *Average*, *Mixes It Up*, *Poker Face*
+  (over 60). A "~" marks coaches too close to call, whose result is within normal ups and downs.
+- **Plays a game his film gives away:** the share of the guessing his film removes, times his snaps per game. McVay
+  2.7 in 2025; the average coach 0.4.
+- **The two ends of the scale**, a **tier board** of every play caller, and a **four-box picture**: his overall lean
+  gives it away (across) vs his looks give it away (up), with the corners named *Tips both*, *Known lean*, *Tells in
+  his looks*, *Nothing to go on*.
+- **Scouting card** for any coach: a written verdict, his biggest tells as cards ("11 personnel: 72% PASS, average
+  team 61%"), where his film fooled a defense, and a "Show the math" drawer.
+
+| 2025 | 2026 |
+|---|---|
+| ![2025](docs/glance_2025.png) | ![2026](docs/glance_2026.png) |
+
 #### Balance score (second view)
 
 A simpler measure, picked with **View** in the sidebar: how close to 50/50 each play caller calls run and pass in each
