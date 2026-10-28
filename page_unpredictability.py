@@ -58,7 +58,8 @@ def with_team(t: pd.DataFrame, info: pd.DataFrame, highlight: list[str], by: str
     d["logo"] = d["Team"].map(info.get("logo", {})).fillna("")
     d["Team name"] = d["Team"].map(info.get("team_name", {})).fillna(d["Team"])
     last = d["Play caller"].str.split().str[-1]
-    d["label"] = d["Team"] if by == "team" else last + " (" + d["Team"] + ")"
+    unlisted = d["Play caller"].str.endswith(" play caller")      # no row in play_callers.csv for this team-season
+    d["label"] = np.where((by == "team") | unlisted, d["Team"], last + " (" + d["Team"] + ")")
     d["opacity"] = np.where(d["Team"].isin(highlight) | (len(highlight) == 0), 1.0, 0.25)
     d["Film edge"] = d["Edge"] * 100                      # bits per 100 snaps
     d["Lean part"], d["Look part"] = d["Lean edge"] * 100, d["Look edge"] * 100
@@ -142,7 +143,8 @@ def logo_scatter(d: pd.DataFrame, x: str, y: str, x_title: str, y_title: str, x_
     for axis, v in zip("xy", ref):
         if v is not None:
             layers.append(alt.Chart(pd.DataFrame({"v": [v]})).mark_rule(color="#888780", strokeDash=[4, 4])
-                          .encode(**{axis: "v:Q"}))
+                          .encode(**{axis: alt.X("v:Q", scale=alt.Scale(zero=False)) if axis == "x" else
+                                     alt.Y("v:Q", scale=alt.Scale(zero=False))}))
     if trend:
         layers.append(base.transform_regression(x, y).mark_line(color="#888780", strokeDash=[6, 4], strokeWidth=2)
                       .encode(tooltip=alt.value(None)))
@@ -311,12 +313,175 @@ to his lean.
 Positive = the film read him there. Negative = his film said one thing and he did another.
 """
 
+# ---- Balance score view --------------------------------------------------------------------------------------
+BALANCE_DEFINITIONS = f"""
+**Balance score** = how close to 50/50 a play caller is in each down & distance, on decision downs only.
+
+1. For each down & distance (1st & short ... 4th & medium), take his pass rate there and square its gap from 50%.
+2. Take out the part of that gap a small sample creates by chance, p(1 − p)/(n − 1): a cell with 4 snaps that went
+   3-1 isn't a tendency yet. Without this, play callers with fewer snaps look more lopsided than they are.
+3. Average over the cells, weighted by how many snaps he ran in each.
+4. Flip it: **100 × (1 − 4 × that average)**. 100 = a coin flip in every down & distance; 0 = the same call every time.
+   Because of step 2 a very balanced caller can land a hair over the raw score, or rarely over 100.
+
+**Left out:** 3rd & long, 3rd & extra long, 4th & long, 4th & extra long (7+ to go). Every team throws there, so
+they don't tell you anything about the caller, and they only pull down offenses that face more of them. **Kept:** every
+1st and 2nd down, 3rd & short and medium, 4th & short and medium.
+
+**Snaps used:** regular season, outside the last 2 minutes of each half, score within {up.MAX_MARGIN} (same as the film
+index).
+
+**How it differs from the film index:** balance looks only at down & distance. A caller can be 50/50 on 2nd & 6 and
+still be easy to read if his formation or his overall lean gives the call away; the film index catches that, the
+balance score doesn't. The scatter at the bottom shows how far apart the two can be.
+"""
+
+
+@st.cache_data(show_spinner="Measuring balance…", ttl=dt.REFRESH_HOURS * 3600)
+def balance(season: int, weeks: tuple[int, int] | None, by: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    d = up.sample(plays(season), season, weeks)
+    if by == "team":
+        d["caller"] = d["posteam"]
+    return up.balance_table(d), up.balance_cells(d)
+
+
+def balance_chart(d: pd.DataFrame) -> alt.LayerChart:
+    """Balance score per play caller, team colors, logo at the end of each bar; dashed line = average caller."""
+    order = list(d.sort_values("Balance score", ascending=False)["label"])
+    lo = float(min(d["Balance score"].min() - 3, 75))
+    tip = [alt.Tooltip("Play caller:N"), alt.Tooltip("Team name:N", title="Team"),
+           alt.Tooltip("Balance score:Q", format=".1f"), alt.Tooltip("Raw balance score:Q", format=".1f",
+                                                                     title="Without the small-sample correction"),
+           alt.Tooltip("Pass rate:Q", format=".0%", title="Pass rate (decision downs)"), "Most lopsided:N",
+           "Most balanced:N", alt.Tooltip("Snaps:Q", format=",")]
+    base = alt.Chart(d.assign(base=lo)).encode(
+        x=alt.X("label:N", sort=order, title=None, axis=alt.Axis(labelAngle=-50, labelFontSize=10, labelLimit=120,
+                                                                labelOverlap=False)), tooltip=tip)
+    y = alt.Y("Balance score:Q", title="Balance score (100 = 50/50 in every decision down)",
+              scale=alt.Scale(domain=[lo, 100]))
+    bars = base.mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+        y=y, y2="base:Q", color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None))
+    logos = base.mark_image(width=LOGO, height=LOGO, baseline="bottom").encode(
+        y="Balance score:Q", url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None))
+    mean = alt.Chart(pd.DataFrame({"v": [d["Balance score"].mean()]})).mark_rule(
+        color="#888780", strokeDash=[4, 4]).encode(y="v:Q")
+    return alt.layer(bars, mean, logos).properties(height=380)
+
+
+def balance_heatmap(cells: pd.DataFrame, d: pd.DataFrame) -> alt.LayerChart:
+    """Pass rate in each decision-down cell for each caller (most balanced at the top)."""
+    c = cells.merge(d[["Team", "Play caller", "label"]], left_on=["posteam", "caller"],
+                    right_on=["Team", "Play caller"])
+    c["off"] = (c["Pass rate"] - 0.5).abs()
+    order = list(d.sort_values("Balance score", ascending=False)["label"])
+    x = alt.X("dd:N", sort=up.BALANCE_CELLS, title=None,
+              axis=alt.Axis(orient="top", labelAngle=-35, labelOverlap=False, labelLimit=140))
+    y = alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False))
+    tip = ["Play caller", alt.Tooltip("dd:N", title="Down & distance"), alt.Tooltip("Pass rate:Q", format=".0%"),
+           "Snaps"]
+    rect = alt.Chart(c).mark_rect().encode(
+        x=x, y=y, tooltip=tip,
+        color=alt.Color("Pass rate:Q", scale=alt.Scale(scheme="purpleorange", reverse=True, domain=[0, 1],
+                                                       domainMid=0.5)),
+        opacity=alt.condition("datum.Snaps < 8", alt.value(0.35), alt.value(1)))
+    text = alt.Chart(c).mark_text(fontSize=9).encode(
+        x=x, y=y, text=alt.Text("Pass rate:Q", format=".0%"),
+        color=alt.condition("datum.off > 0.3", alt.value("white"), alt.value(cm.theme_ink())))
+    return alt.layer(rect, text).properties(height=19 * len(order) + 10)
+
+
+def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snaps: int, highlight: list[str]):
+    st.title("Unpredictability Index: balance score")
+    st.caption("How close to 50/50 each play caller calls run and pass in each down & distance, leaving out the "
+               "obvious passing downs.")
+    with st.expander("How this is measured"):
+        st.markdown(BALANCE_DEFINITIONS)
+    try:
+        t, cells = balance(season, weeks, by)
+    except Exception as e:
+        st.error(f"Couldn't load nflfastR data: {e}")
+        st.stop()
+    if t.empty:
+        st.info("No snaps match these filters.")
+        st.stop()
+    d = with_team(t.assign(Edge=np.nan, **{"Lean edge": np.nan, "Look edge": np.nan, "Film accuracy": np.nan,
+                                           "Generic accuracy": np.nan}), info, highlight, by)
+    d = d[d["Snaps"] >= min_snaps]
+    if d.empty:
+        st.info("No play callers with that many snaps. Lower the minimum.")
+        st.stop()
+    c = st.columns(4)
+    c[0].metric(f"Most balanced: {d.iloc[0]['label']}", f"{d.iloc[0]['Balance score']:.1f}")
+    c[1].metric(f"Least balanced: {d.iloc[-1]['label']}", f"{d.iloc[-1]['Balance score']:.1f}")
+    c[2].metric("Average play caller", f"{d['Balance score'].mean():.1f}")
+    c[3].metric("Snaps per caller", f"{int(d['Snaps'].median()):,}", help="Median decision-down snaps.")
+
+    st.markdown(f"**Balance score, {season}**")
+    st.altair_chart(balance_chart(d), width="stretch")
+    st.caption("Higher = closer to 50/50 in each down & distance, so harder to call. Dashed line = the average play "
+               "caller. 3rd/4th & 7+ left out. Hover for each caller's most lopsided and most balanced spots.")
+
+    st.markdown("**Why: his pass rate in every decision down**")
+    st.altair_chart(balance_heatmap(cells, d), width="stretch")
+    st.caption("Purple = throws, orange = runs, white = 50/50. The darker a cell, the more it costs his score; big cells "
+               "cost more than small ones. Faded = under 8 snaps (counted, but its gap is mostly discounted as chance).")
+
+    st.markdown("**Every play caller**")
+    show = pd.DataFrame({"Logo": d["logo"], "Play caller": d["Play caller"], "Team": d["Team"],
+                         "Balance score": d["Balance score"], "Raw balance score": d["Raw balance score"],
+                         "Pass rate": d["Pass rate"], "Most lopsided": d["Most lopsided"],
+                         "Most balanced": d["Most balanced"], "Snaps": d["Snaps"]})
+    st.dataframe(show.style.format({"Balance score": "{:.1f}", "Raw balance score": "{:.1f}", "Pass rate": "{:.0%}",
+                                    "Snaps": "{:,}"}).apply(shade_index_balance, subset=["Balance score"]),
+                 width="stretch", hide_index=True, height=36 * (len(show) + 1) + 2,
+                 column_config={"Logo": st.column_config.ImageColumn("", width="small"),
+                                "Raw balance score": st.column_config.Column(
+                                    help="The same score without taking out small-sample chance."),
+                                "Most lopsided": st.column_config.Column(
+                                    help="Decision down (8+ snaps) furthest from 50/50."),
+                                "Pass rate": st.column_config.Column(help="Pass rate on decision downs."),
+                                "Snaps": st.column_config.Column(help="Decision-down snaps.")})
+
+    st.markdown("**Balanced isn't the same as hard to read**")
+    try:
+        f = with_team(up.caller_table(*scored(season, weeks, by)), info, highlight, by)
+        both = f.merge(d[["Team", "Play caller", "Balance score"]], on=["Team", "Play caller"])
+        both = both[both["Unpredictability index"].notna()]
+    except Exception:
+        both = pd.DataFrame()
+    if len(both) >= 5:
+        r = both["Balance score"].corr(both["Unpredictability index"])
+        st.altair_chart(logo_scatter(both, "Balance score", "Unpredictability index", "Balance score →",
+                                     "Film-based unpredictability index →", ".0f", ".0f",
+                                     ref=(float(both["Balance score"].mean()), 50.0)), width="stretch")
+        st.caption(f"r = {r:+.2f}. Right = more 50/50 by down & distance; up = his film tells a defense less. A caller "
+                   "far right but low (balanced, yet readable) gives his calls away some other way: his formation, "
+                   "personnel, or a steady overall lean.")
+    else:
+        st.caption("Not enough film yet to compare with the film index.")
+
+
+def shade_index_balance(col):
+    """Orange below the average caller, purple above, stronger the farther from it."""
+    mu, sd = col.mean(), col.std() or 1
+    out = []
+    for v in col:
+        z = (v - mu) / sd
+        a = min(abs(z) / 2, 1)
+        rgb = "83,74,183" if z > 0 else "216,90,48"
+        out.append(f"background-color:rgba({rgb},{a * 0.45:.2f})" if a >= 0.15 else "")
+    return out
+
+
 # ---- Page ----------------------------------------------------------------------------------------------------
 seasons = dt.available_seasons()
 info = team_info()
 callers_csv = up.load_callers()
 with st.sidebar:
     st.header("Unpredictability Index")
+    view = st.segmented_control("View", ["Film index", "Balance score"], default="Film index", key="up_view",
+                                help="Film index: how much a defense learns from his earlier games. Balance score: "
+                                     "how close to 50/50 he calls each down & distance.") or "Film index"
     st.session_state.setdefault("up_season", seasons[-1])
     season = st.selectbox("Season", seasons[::-1], key="up_season")
     season_plays = plays(season)
@@ -332,17 +497,22 @@ with st.sidebar:
                                     help="Play callers: a mid-season change of play caller starts a new film study. "
                                          "Teams: one film study per team for the whole range.")
     by = "team" if by_label == "Teams" else "caller"
-    min_snaps = st.slider("Minimum scored snaps to show", 0, 600, up.MIN_SNAPS, 25, key="up_min",
+    min_snaps = st.slider("Minimum scored snaps to show" if view == "Film index" else "Minimum snaps to show",
+                          0, 600, up.MIN_SNAPS, 25, key="up_min",
                           help=f"Index needs {up.MIN_SNAPS}+; lower shows short stints without an index.")
     highlight = st.multiselect("Highlight teams", sorted(season_plays["posteam"].dropna().unique()), key="up_hl",
                                help="Fades every other team in the charts.")
+
+week_range = None if weeks == (1, max_week) else weeks
+if view == "Balance score":
+    render_balance(season, week_range, by, min_snaps, highlight)
+    st.stop()
 
 st.title("Unpredictability Index")
 st.caption("How much a defense learns by studying a play caller's film: which coaches give their calls away, which "
            "don't, and the looks that tell on them.")
 with st.expander("How this is measured"):
     st.markdown(DEFINITIONS)
-week_range = None if weeks == (1, max_week) else weeks
 try:
     d_snaps, clues = scored(season, week_range, by)
 except Exception as e:

@@ -109,6 +109,24 @@ says so.
 
 These screenshots also use stand-in logo badges.
 
+#### Balance score (second view)
+
+A simpler measure, picked with **View** in the sidebar: how close to 50/50 each play caller calls run and pass in each
+down & distance. For each down & distance, his pass rate's squared gap from 50%, minus the part a small sample makes
+by chance (p(1 − p)/(n − 1), so a 3-of-4 cell isn't a tendency yet); averaged over the cells weighted by snaps; then
+**100 × (1 − 4 × that average)**: 100 = a coin flip everywhere, 0 = the same call every time. Only decision downs
+count: every 1st and 2nd down, 3rd & short/medium, 4th & short/medium. 3rd/4th & long and extra long are left out,
+since every team throws there.
+
+The view shows the score as bars, a heatmap of each caller's pass rate in every decision down (the why), a table with
+each caller's most lopsided and most balanced spots, and the balance score against the film index. The two barely
+agree (r ≈ 0 in 2024-25): McVay is near the top on balance but the most readable caller on film, because his formation
+and overall lean give his calls away and down & distance doesn't.
+
+| 2026 | 2025 |
+|---|---|
+| ![2026](docs/balance_2026.png) | ![2025](docs/balance_2025.png) |
+
 ## Data
 
 - **Play-by-play:** nflfastR from the [nflverse data releases](https://github.com/nflverse/nflverse-data/releases):
