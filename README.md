@@ -70,6 +70,45 @@ A measure a season doesn't have (personnel in the season in progress) is left ou
 The logos in these two screenshots are stand-in badges (team color and abbreviation): the machine that took them
 couldn't reach ESPN's CDN. The app shows the real logos.
 
+### Unpredictability Index
+
+How much a defense learns by studying a play caller's film, beyond knowing how the NFL calls the same spots. Two
+scouts predict run or pass on every snap from what's visible **before** the snap:
+
+- **NFL scout:** nflfastR's `xpass` (down, distance, field position, score, time, timeouts) plus the league's
+  tendency in each look: formation, personnel, motion, backfield count, and whether the last snap was a run or a pass.
+  Fit on the other 31 teams. Knows nothing about this offense.
+- **Film scout:** starts from the NFL scout and learns this play caller's own tendencies from **his earlier games
+  only** (game 4 from games 1-3, game 5 from 1-4, ...): his overall pass/run lean and his habits by situation and look.
+  Each habit is pulled hard toward 0 until the film shows it again and again (a ridge-penalized logistic model with
+  the NFL scout as its offset). A play caller who takes over mid-season starts a fresh film study.
+
+**Film edge** = how much better the film scout predicts games it hadn't seen, in bits per 100 snaps (log loss). A
+tendency that doesn't repeat costs the film scout, so the edge can be negative: the film misleads. The edge splits into
+**from lean** (a film scout that knows only his overall lean) and **from looks** (the rest). The **unpredictability
+index** is the film edge as a T-score, flipped: 50 = an average NFL play caller that season, 60+ = hard to read, 40 and
+below = readable.
+
+**On the page:** the index as bars from 50 in team colors with logos; a table of every play caller (film edge with its
+±2 SE, lean vs looks, NFL-scout vs film-scout accuracy, the biggest tell, each clue's edge, EPA, PROE); a heatmap of
+which clues give each caller away; lean vs habits and EPA vs index scatters; a **why** section for any caller (a
+summary, the looks where his film caught a tell, and the looks where it misled); and each play caller's index across
+seasons. **Sidebar:** season, weeks, compare play callers or teams, minimum snaps, highlight teams.
+
+**Play callers** come from `play_callers.csv` (season, team, play caller, role, first and last week, confidence),
+filled in for 2024-2026 from team and media reports. A season without rows treats each team as one play caller.
+
+**What it shows so far:** most of the reliable difference between callers is lean (a defense that knows McVay throws
+~11 points over expected all year can read him); habits by look are real but small and noisier. Split-half reliability
+of the film edge: 0.50 (2023), 0.56 (2024), 0.77 (2025). Seven weeks into 2026 it's still mostly noise, and the page
+says so.
+
+| 2026 (default view) | 2025 |
+|---|---|
+| ![2026](docs/unpredictability_2026.png) | ![2025](docs/unpredictability_2025.png) |
+
+These screenshots also use stand-in logo badges.
+
 ## Data
 
 - **Play-by-play:** nflfastR from the [nflverse data releases](https://github.com/nflverse/nflverse-data/releases):
@@ -77,6 +116,8 @@ couldn't reach ESPN's CDN. The app shows the real logos.
 - **Participation charting:** nflverse's FTN participation file adds formation, personnel, men in the box, and
   coverage. nflverse publishes it after each season, so **the season in progress has no personnel, box count, or
   coverage yet**; formation falls back to nflfastR's shotgun / under center flag, and those tables say so.
+- **FTN charting** (2022 on, updated during the season): motion at the snap, play action, RPO, screens, and the
+  number of backs in the backfield. A season file saved before this was added downloads again once.
 
 The app downloads each season the first time it's picked and keeps a slimmed copy in `data/` (about 5 MB a
 season). The season in progress is re-downloaded every 12 hours so new weeks show up.
@@ -88,6 +129,9 @@ app.py              Navigation between the pages
 page_tendencies.py  Tendencies page: sidebar filters, tabs
 page_identity.py    Play-Calling Identity page
 identity.py         Play-calling identity measures (no Streamlit code)
+page_unpredictability.py  Unpredictability Index page
+unpredictability.py The unpredictability model (no Streamlit code)
+play_callers.csv    Who called each team's offensive plays, by season and week
 data.py             Downloads nflfastR pbp + participation; builds the app's columns
 common.py           Metrics, NFL comparison columns, table colors, tendency badges, split bars
 tab_tendencies.py   Tendencies tab
