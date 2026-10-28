@@ -96,7 +96,8 @@ def test_balance_score():
     d = up.sample(league(), 2025, callers=NO_CALLERS)
     t = up.balance_table(d).set_index("Team")
     # 3rd/4th & 7+ are left out; everything else counts.
-    assert not set(up.BALANCE_SKIP) & set(up.BALANCE_CELLS) and len(up.BALANCE_CELLS) == 12
+    assert not set(up.BALANCE_SKIP) & set(up.BALANCE_CELLS) and len(up.BALANCE_CELLS) == 11
+    assert "3rd & medium" in up.BALANCE_CELLS and "4th & medium" in up.BALANCE_SKIP
     assert t.loc["TELL", "Snaps"] == d[(d["posteam"] == "TELL") & ~d["dd"].isin(up.BALANCE_SKIP)].shape[0]
     # Every AVG team throws about 54% in every cell, so it scores close to 100 once chance is taken out. TELL throws
     # every shotgun snap (64% overall): a little lopsided by down & distance, but nowhere near how readable it is,
@@ -139,3 +140,39 @@ def test_plain_language_summary_for_a_tell_team():
     text = up.verdict(r, up.tells(looks), up.misleads(looks))
     assert text.startswith("TELL ") and "formation" in text
     assert up.certainty(t)["TELL"] == "Clear"
+
+
+def test_typical_split_and_tiers():
+    assert up.typical_split(100) == 0.5
+    assert abs(up.typical_split(87.5) - 0.6768) < 1e-3          # a 68/32 call
+    assert up.split_text(0.6768) == "68/32"
+    assert [up.balance_tier(s) for s in (99, 92, 88, 85, 75)] == ["Coin Flip", "Balanced", "Average", "Leans", "Lopsided"]
+    assert up.balance_tier(88, by_formation=True) == "Balanced"  # tiers move up with the formation split
+
+
+def test_points_lost_add_up_and_formation_split():
+    d = up.sample(league(), 2025, callers=NO_CALLERS)
+    for split in (False, True):
+        c = up.balance_cells(d, split)
+        t = up.balance_table(d, split).set_index("Team")
+        lost = c.groupby("posteam")["Cost"].sum()
+        assert np.allclose(100 - t["Balance score"], lost.reindex(t.index))
+    # TELL throws every shotgun snap and runs every under-center snap: split by formation it is a 100/0 call.
+    t = up.balance_table(d, True).set_index("Team")
+    assert t.loc["TELL", "Typical split"] > 0.95 and t.loc["TELL", "Balance tier"] == "Lopsided"
+    assert t.drop("TELL")["Typical split"].median() < 0.75
+
+
+def test_balance_verdict_mentions_two_down_third_and_medium():
+    rows = []
+    for cell, n, passes in [("1st & long", 100, 50), ("2nd & long", 60, 48), ("3rd & medium", 40, 24)]:
+        rows += [{"posteam": "A", "caller": "Pat Coach", "dd": cell, "PASS": int(i < passes), "shotgun": 1,
+                  "pass_oe": 0.0} for i in range(n)]
+    d = pd.DataFrame(rows)
+    c = up.balance_cells(d)
+    r = up.balance_table(d).iloc[0]
+    text = up.balance_verdict(r, c, league_third=0.92)
+    assert text.startswith("Coach's typical decision down is a ")
+    assert "2nd & long" in text and "first of two downs" in text
+    assert "throws 60% (league 92%)" in text
+    assert "His true coin flip: 1st & long (50% pass)." in text

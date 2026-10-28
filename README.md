@@ -128,19 +128,29 @@ The same film index in plain words, for anyone who watches football. Pick **View
 |---|---|
 | ![2025](docs/glance_2025.png) | ![2026](docs/glance_2026.png) |
 
-#### Balance score (second view)
+#### Balance score
 
-A simpler measure, picked with **View** in the sidebar: how close to 50/50 each play caller calls run and pass in each
-down & distance. For each down & distance, his pass rate's squared gap from 50%, minus the part a small sample makes
-by chance (p(1 − p)/(n − 1), so a 3-of-4 cell isn't a tendency yet); averaged over the cells weighted by snaps; then
-**100 × (1 − 4 × that average)**: 100 = a coin flip everywhere, 0 = the same call every time. Only decision downs
-count: every 1st and 2nd down, 3rd & short/medium, 4th & short/medium. 3rd/4th & long and extra long are left out,
-since every team throws there.
+Picked with **View** in the sidebar: how close to 50/50 each play caller calls run and pass on each decision down.
+For each down & distance, his pass rate's squared gap from 50%, minus the part a small sample makes by chance
+(p(1 − p)/(n − 1), so a 3-of-4 cell isn't a tendency yet); averaged over the cells weighted by snaps; then
+**100 × (1 − 4 × that average)**.
 
-The view shows the score as bars, a heatmap of each caller's pass rate in every decision down (the why), a table with
-each caller's most lopsided and most balanced spots, and the balance score against the film index. The two barely
-agree (r ≈ 0 in 2024-25): McVay is near the top on balance but the most readable caller on film, because his formation
-and overall lean give his calls away and down & distance doesn't.
+- **Counted:** every 1st and 2nd down, 3rd & short and medium, 4th & short. **Left out:** 3rd & 7+ (every team
+  throws) and 4th & 4+ (a handful of snaps, nearly all passes). 3rd & medium stays on purpose: coaches who run there
+  are playing it as the first of two downs, ready to go for it on 4th.
+- **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
+  call). **Tiers:** Coin Flip (62/38 or closer), Balanced, Average, Leans, Lopsided (beyond 71/29).
+- **On the page:** the two ends of the scale; a tier board; **where each coach loses balance** (points lost per down &
+  distance, adding up to 100 minus his score); **3rd & medium: one down or two?** (pass rate there against the league;
+  8+ points below = a two-down set); **balanced isn't the same as hard to read** (callouts where balance and the film
+  index disagree, plus the scatter); and a **scouting card** with a written verdict, his typical call season by
+  season, and his decision downs in the Tendencies tab's down & distance grid (run/pass bar, PROE chip, plays, and
+  points lost). The score bars, a points-lost heatmap, and the full table are under **Show the math**.
+- **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
+  what a defense sees before the snap. Every caller looks about 5 points more lopsided that way, so the tiers move up.
+- **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
+  gap between coaches is still noise. The balance score and the film index barely agree (r ≈ 0): McVay is an average
+  66/34 caller by down & distance but the easiest coach to read on film.
 
 | 2026 | 2025 |
 |---|---|
