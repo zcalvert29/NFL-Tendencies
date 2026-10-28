@@ -90,3 +90,26 @@ def test_play_caller_list_is_complete():
         for team, tg in g.groupby("team"):
             weeks = sorted(w for r in tg.itertuples() for w in range(r.first_week, r.last_week + 1))
             assert weeks == list(range(1, 23)), (season, team)
+
+
+def test_balance_score():
+    d = up.sample(league(), 2025, callers=NO_CALLERS)
+    t = up.balance_table(d).set_index("Team")
+    # 3rd/4th & 7+ are left out; everything else counts.
+    assert not set(up.BALANCE_SKIP) & set(up.BALANCE_CELLS) and len(up.BALANCE_CELLS) == 12
+    assert t.loc["TELL", "Snaps"] == d[(d["posteam"] == "TELL") & ~d["dd"].isin(up.BALANCE_SKIP)].shape[0]
+    # Every AVG team throws about 54% in every cell, so it scores close to 100 once chance is taken out. TELL throws
+    # every shotgun snap (64% overall): a little lopsided by down & distance, but nowhere near how readable it is,
+    # since formation is what gives it away and the balance score never sees formation.
+    avg = t.drop("TELL")["Balance score"]
+    assert avg.between(95, 102).all()
+    assert 85 < t.loc["TELL", "Balance score"] < avg.min()
+    # The small-sample correction only ever raises the score.
+    assert (t["Balance score"] >= t["Raw balance score"]).all()
+
+
+def test_balance_correction_removes_chance():
+    rows = pd.DataFrame({"posteam": "A", "caller": "A play caller", "dd": "1st & long", "PASS": [1, 1, 1, 0]})
+    c = up.balance_cells(rows)
+    # 3 of 4: raw gap (0.75 - 0.5)^2 = 0.0625, chance part 0.75 * 0.25 / 3 = 0.0625, so no tendency left yet.
+    assert np.isclose(c["Gap"].iloc[0], 0.0)

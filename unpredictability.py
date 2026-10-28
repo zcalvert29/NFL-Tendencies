@@ -312,3 +312,46 @@ def reliability(d: pd.DataFrame) -> float:
         return np.nan
     r = h.iloc[:, 0].corr(h.iloc[:, 1])
     return 2 * r / (1 + r)
+
+
+# ---- Balance score ------------------------------------------------------------------------------------------------
+# A second, simpler view: how close to 50/50 a play caller calls each down & distance. For every cell, the squared gap
+# from 50/50, minus the part of it a small sample adds by chance; averaged over cells weighted by snaps; flipped so
+# 100 = a coin flip in every cell and 0 = the same call every time. Obvious passing downs (3rd/4th & 7+) are left out:
+# every team throws there, so they say nothing about the caller and only punish offenses that face more of them.
+BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & long", "4th & extra long")
+BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd", "3rd", "4th")
+                 for dist in dt.DISTANCE_ORDER]
+BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
+
+
+def balance_cells(d: pd.DataFrame) -> pd.DataFrame:
+    """Per stint (team + caller) and decision-down cell: snaps, pass rate, and the noise-corrected squared gap from
+    50/50, (p - 0.5)^2 - p(1 - p)/(n - 1). The correction is the expected chance part of the gap, so a 4-snap cell
+    that went 3-1 isn't scored as a lopsided tendency."""
+    c = (d[d["dd"].isin(BALANCE_CELLS)].groupby(["posteam", "caller", "dd"])["PASS"]
+         .agg(["mean", "size"]).rename(columns={"mean": "Pass rate", "size": "Snaps"}).reset_index())
+    p, n = c["Pass rate"], c["Snaps"]
+    c["Gap"] = (p - 0.5) ** 2 - np.where(n > 1, p * (1 - p) / (n - 1).clip(lower=1), 0.0)
+    return c
+
+
+def balance_table(d: pd.DataFrame) -> pd.DataFrame:
+    """One row per stint: the balance score, its raw (uncorrected) version, and the most and least balanced
+    decision-down cells (8+ snaps)."""
+    c = balance_cells(d)
+    rows = []
+    for (team, caller), g in c.groupby(["posteam", "caller"], sort=False):
+        n = g["Snaps"].sum()
+        raw = (g["Snaps"] * (g["Pass rate"] - 0.5) ** 2).sum() / n
+        big = g[g["Snaps"] >= 8]
+        worst = big.loc[(big["Pass rate"] - 0.5).abs().idxmax()] if len(big) else None
+        best = big.loc[(big["Pass rate"] - 0.5).abs().idxmin()] if len(big) else None
+        rows.append({"Team": team, "Play caller": caller, "Snaps": int(n),
+                     "Balance score": 100 * (1 - 4 * (g["Snaps"] * g["Gap"]).sum() / n),
+                     "Raw balance score": 100 * (1 - 4 * raw),
+                     "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
+                     "Most lopsided": "" if worst is None else f"{worst['dd']}: {worst['Pass rate']:.0%} pass",
+                     "Most balanced": "" if best is None else f"{best['dd']}: {best['Pass rate']:.0%} pass"})
+    t = pd.DataFrame(rows)
+    return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
