@@ -57,7 +57,7 @@ def sequence_html(t: pd.DataFrame, base_pass: float) -> str:
             f'<div style="display:grid;grid-template-columns:{COLS};gap:10px;align-items:center;padding:6px 0;'
             f'border-top:0.5px solid rgba(128,128,128,.25);font-size:13px{";opacity:.55" if n < cm.TELL_MIN_N else ""}">'
             f'<div>{r["After"]}</div><div style="text-align:right;opacity:.7">{n}</div>'
-            f'<div>{cm.split_bar(1 - pr, 1 - r["NFL pass"])}<div style="font-size:11px;opacity:.75">'
+            f'<div>{cm.split_bar(1 - pr)}<div style="font-size:11px;opacity:.75">'
             f'Run {1 - pr:.0%} · Pass {pr:.0%} · NFL {r["NFL pass"]:.0%}{cm.badge(k, n)}</div></div>'
             f'<div style="font-size:12px">{diff_txt}</div>'
             f'<div style="font-size:12px">{cm.proe_text(r["PROE"])}</div>'

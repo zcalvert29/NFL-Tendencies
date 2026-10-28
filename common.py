@@ -221,16 +221,11 @@ def badge(k: int, n: int) -> str:
             f'margin-left:6px;white-space:nowrap">{label}</span>')
 
 
-def split_bar(run_share: float, nfl_run_share: float | None = None, height: int = 8) -> str:
-    """Run (orange) / pass (purple) bar. The black tick marks where the NFL's split is in the same situation."""
-    tick = ""
-    if nfl_run_share is not None and not pd.isna(nfl_run_share):
-        tick = (f'<span title="NFL" style="position:absolute;left:calc({nfl_run_share * 100:.1f}% - 1px);top:-3px;'
-                f'width:2px;height:{height + 6}px;background:currentColor;border-radius:1px"></span>')
-    return (f'<div style="position:relative;margin:6px 0">'
-            f'<div style="display:flex;height:{height}px;border-radius:4px;overflow:hidden">'
+def split_bar(run_share: float, height: int = 8) -> str:
+    """Run (orange) / pass (purple) bar."""
+    return (f'<div style="display:flex;height:{height}px;border-radius:4px;overflow:hidden;margin:6px 0">'
             f'<span style="width:{run_share * 100:.0f}%;background:{RUN_C}"></span>'
-            f'<span style="width:{(1 - run_share) * 100:.0f}%;background:{PASS_C}"></span></div>{tick}</div>')
+            f'<span style="width:{(1 - run_share) * 100:.0f}%;background:{PASS_C}"></span></div>')
 
 
 LEGEND = (f'<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;margin:2px 0 8px;align-items:center">'
@@ -238,8 +233,6 @@ LEGEND = (f'<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;marg
           f'margin-right:4px"></span>Run</span>'
           f'<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{PASS_C};'
           f'margin-right:4px"></span>Pass</span>'
-          f'<span><span style="display:inline-block;width:2px;height:12px;background:currentColor;margin-right:5px;'
-          f'vertical-align:middle"></span>NFL split, same situation</span>'
           f'<span style="opacity:.7">tell / lean / small sample = how much to trust a {MIN_TELL_SHARE:.0%}+ split'
           f'</span></div>')
 
@@ -249,6 +242,17 @@ def proe_text(v: float) -> str:
         return ""
     color = PASS_C if v > 0.05 else RUN_C if v < -0.05 else "inherit"
     return f'<span style="color:{color};font-weight:600">PROE {pct_points(v)}</span>'
+
+
+CHIP_MIN_PROE = 0.05   # a PROE chip shows only when the team is at least this far from an average team...
+
+
+def proe_chip(v: float) -> str:
+    """'PROE +14%' as a colored pill: purple = throws more than expected, orange = runs more."""
+    if pd.isna(v):
+        return ""
+    return (f'<span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;color:#fff;'
+            f'white-space:nowrap;background:{PASS_C if v > 0 else RUN_C}">PROE {pct_points(v)}</span>')
 
 
 # ---- Plays ---------------------------------------------------------------------------------------------------
