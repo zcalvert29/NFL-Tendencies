@@ -186,4 +186,18 @@ def test_balance_verdict_mentions_two_down_third_and_medium():
 def test_balance_table_has_epa():
     d = up.sample(league(), 2025, callers=NO_CALLERS)
     t = up.balance_table(d).set_index("Team")
-    assert np.allclose(t["EPA/play"], d.groupby("posteam")["epa"].mean().reindex(t.index))
+    counted = d[d["dd"].isin(up.BALANCE_CELLS)]       # the same decision-down snaps the score uses
+    assert np.allclose(t["EPA/play"], counted.groupby("posteam")["epa"].mean().reindex(t.index))
+
+
+def test_outcomes_same_snaps_and_neutral():
+    snaps = pd.DataFrame({
+        "posteam": "A", "caller": "Pat", "epa": [1.0, -1.0, 0.5, 0.5], "success": [1, 0, 1, 1],
+        "explosive": [1, 0, 0, 0], "DN": [3, 3, 1, 2], "first_down": [1, 0, 0, 1], "game_id": "G",
+        "fixed_drive": [1, 1, 2, 3], "fixed_drive_result": ["Touchdown", "Touchdown", "Punt", "Field goal"],
+        "score_differential": [0, 0, 14, 0], "qtr": [1, 1, 2, 4]})
+    o = up.outcomes(snaps).iloc[0]
+    assert o["EPA/play"] == 0.25 and o["Success rate"] == 0.75 and o["3rd-down conversion"] == 0.5
+    assert o["Points per drive"] == (7 + 0 + 3) / 3
+    n = up.outcomes(snaps, neutral=True).iloc[0]      # drops the 14-point snap and the 4th-quarter snap
+    assert n["Outcome snaps"] == 2 and n["EPA/play"] == 0.0 and n["Points per drive"] == 7

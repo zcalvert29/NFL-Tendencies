@@ -22,7 +22,8 @@ def plays(season: int) -> pd.DataFrame:
 @st.cache_data(show_spinner="Scouting every play caller's film…", ttl=dt.REFRESH_HOURS * 3600)
 def scored(season: int, weeks: tuple[int, int] | None, by: str) -> tuple[pd.DataFrame, list[str]]:
     d, clues = up.score(plays(season), season, weeks, by=by)
-    keep = ["posteam", "caller", "Week", "game_id", "PASS", "pass_oe", "epa", "scored", "xpass"]
+    keep = ["posteam", "caller", "Week", "game_id", "PASS", "pass_oe", "epa", "scored", "xpass", "success",
+            "explosive", "first_down", "DN", "qtr", "score_differential", "fixed_drive", "fixed_drive_result"]
     keep += [c for c in d.columns if c.startswith(("p_", "gain_", "bits_"))]
     keep += [c for k in clues for c in up.CLUES[k][1]]
     return d[keep], clues
@@ -163,54 +164,126 @@ def badge_html(r: pd.Series, size: int = 26) -> str:
 
 
 
-# ---- EPA/play trend ------------------------------------------------------------------------------------------
-@st.cache_data(show_spinner="Scoring every season…", ttl=dt.REFRESH_HOURS * 3600)
-def film_seasons(seasons: tuple[int, ...]) -> pd.DataFrame:
-    """The film index table for each season (whole season, by play caller), stacked."""
-    out = []
-    for s in seasons:
-        t = up.caller_table(*scored(s, None, "caller"))
-        out.append(t[t["Unpredictability index"].notna()].assign(Season=s))
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+# ---- Outcomes: does the score go with a better offense? ------------------------------------------------------
+SPANS = ["This season", "Last 5 seasons", "1999 to this season"]
 
 
-@st.cache_data(show_spinner="Measuring every season…", ttl=dt.REFRESH_HOURS * 3600)
-def balance_seasons(seasons: tuple[int, ...], min_snaps: int = up.MIN_SNAPS) -> pd.DataFrame:
-    """The balance table for each season (whole season, by play caller), stacked."""
-    out = []
-    for s in seasons:
-        t = up.balance_table(up.sample(plays(s), s))
-        out.append(t[t["Snaps"] >= min_snaps].assign(Season=s))
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+@st.cache_data(show_spinner="Scoring a season…", ttl=dt.REFRESH_HOURS * 3600)
+def film_season(season: int, neutral: bool) -> pd.DataFrame:
+    """One season's film index (whole season, by play caller) with every outcome over the same scored snaps."""
+    d, clues = scored(season, None, "caller")
+    t = up.caller_table(d, clues)
+    t = t[t["Unpredictability index"].notna()].drop(columns=["EPA/play"])
+    return t.merge(up.outcomes(d[d["scored"]], neutral), on=["Team", "Play caller"]).assign(Season=season)
 
 
-def epa_trend_section(this: pd.DataFrame, pooled_loader, x: str, x_title: str, x_fmt: str, more: str,
-                      per: float, unit: str, info: pd.DataFrame, highlight: list[str], season: int,
-                      key: str) -> None:
-    """EPA/play against a score, one point per play caller, with a least-squares line and a plain verdict on whether
-    a trend exists. `pooled_loader(seasons)` returns the same table for several seasons; pooled EPA/play is
-    measured against each season's average, since the league's EPA/play rises over the years."""
+@st.cache_data(show_spinner="Measuring a season…", ttl=dt.REFRESH_HOURS * 3600)
+def balance_season(season: int, neutral: bool) -> pd.DataFrame:
+    """One season's balance table (whole season, by play caller) with every outcome over the same decision-down
+    snaps."""
+    d = up.sample(plays(season), season)
+    t = up.balance_table(d)
+    t = t[t["Snaps"] >= up.MIN_SNAPS].drop(columns=["EPA/play"])
+    snaps = d[d["dd"].isin(up.BALANCE_CELLS)]
+    return t.merge(up.outcomes(snaps, neutral), on=["Team", "Play caller"]).assign(Season=season)
+
+
+def stacked(loader, seasons: range | list[int], neutral: bool) -> pd.DataFrame:
+    frames = [loader(s, neutral) for s in seasons]
+    frames = [f for f in frames if len(f)]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _vs_season(d: pd.DataFrame, col: str) -> pd.Series:
+    """The outcome minus that season's average across play callers (outcomes drift up over the years)."""
+    return d[col] - d.groupby("Season")[col].transform("mean")
+
+
+def outcome_trend_section(loader, x: str, x_title: str, x_fmt: str, more: str, per: float, unit: str,
+                          info: pd.DataFrame, highlight: list[str], season: int, snaps_note: str, key: str) -> None:
+    """An outcome against a score, one point per play caller, with a least-squares line and a plain verdict on
+    whether a trend exists. `loader(season, neutral)` returns the score table with up.outcomes() columns."""
     seasons = dt.available_seasons()
-    span = st.segmented_control("Play callers from", ["This season", "Last 5 seasons", "1999 to this season"],
-                                default="This season", key=key) or "This season"
+    c1, c2, c3 = st.columns([2, 1.4, 1.4])
+    span = c1.segmented_control("Play callers from", SPANS, default=SPANS[0], key=f"{key}_span") or SPANS[0]
+    outcome = c2.selectbox("Offense measured by", list(up.OUTCOMES), key=f"{key}_outcome",
+                           help="\n".join(f"{k}: {v[1]}" for k, v in up.OUTCOMES.items()))
+    neutral = c3.toggle("Neutral game script only", False, key=f"{key}_neutral",
+                        help=f"Count only snaps within {up.NEUTRAL_MARGIN} points and outside the 4th quarter, so "
+                             "teams protecting or chasing a lead don't skew the offense's numbers.")
+    first = {"This season": season, "Last 5 seasons": max(seasons[0], season - 4)}.get(span, seasons[0])
+    d = stacked(loader, range(first, season + 1), neutral)
+    if d.empty:
+        st.info("No play callers with enough snaps here yet.")
+        return
+    d = with_team(d, info, highlight, "caller").dropna(subset=[x, outcome])
+    fmt = up.OUTCOMES[outcome][0]
     if span == "This season":
-        d = this.dropna(subset=[x, "EPA/play"]).assign(y=lambda t: t["EPA/play"])
-        y_title, logos = "Offensive EPA per play →", True
+        d["y"], y_title, logos = d[outcome], f"{outcome} →", True
     else:
-        first = seasons[0] if span == "1999 to this season" else max(seasons[0], season - 4)
-        p = pooled_loader(tuple(range(first, season + 1)))
-        p = p.assign(y=p["EPA/play"] - p.groupby("Season")["EPA/play"].transform("mean"))
-        d = with_team(p, info, highlight, "caller").dropna(subset=[x, "y"])
+        d["y"], y_title, logos = _vs_season(d, outcome), f"{outcome} vs that season's average →", False
         d["label"] = d["label"] + " " + d["Season"].astype(str)
-        y_title, logos = "EPA per play vs that season's average →", False
-    tip = [alt.Tooltip("Play caller:N"), alt.Tooltip("Team name:N", title="Team"),
-           *([alt.Tooltip("Season:O")] if "Season" in d else []), alt.Tooltip(f"{x}:Q", format=x_fmt, title=x),
-           alt.Tooltip("EPA/play:Q", format="+.3f")]
-    st.altair_chart(logo_scatter(d, x, "y", x_title, y_title, x_fmt, "+.2f", trend=True, tip=tip, logos=logos),
+    tip = [alt.Tooltip("Play caller:N"), alt.Tooltip("Team name:N", title="Team"), alt.Tooltip("Season:O"),
+           alt.Tooltip(f"{x}:Q", format=x_fmt, title=x), alt.Tooltip(f"{outcome}:Q", format=fmt),
+           alt.Tooltip("Outcome snaps:Q", format=",", title="Snaps")]
+    y_fmt = "+.1%" if "%" in fmt else "+.2f"
+    st.altair_chart(logo_scatter(d, x, "y", x_title, y_title, x_fmt, y_fmt, trend=True, tip=tip, logos=logos),
                     width="stretch")
-    t = cm.fit_trend(d[x], d["y"])
-    st.markdown(cm.trend_sentence(t, more=more, per=per, unit=unit))
-    st.caption(f"{t['n']} play callers{'' if span == 'This season' else ' (one point per play caller per season)'}. "
-               "Dashed line = least-squares fit. r = correlation (-1 to 1); p = the chance of a slope this steep if "
-               "there were no real link (under 0.05 = a clear trend). A trend here is a link, not proof of cause: a "
-               "good offense can be the reason a coach can afford to be predictable, or not.")
+    st.markdown(cm.trend_sentence(cm.fit_trend(d[x], d["y"]), more=more, per=per, unit=unit, outcome=outcome))
+    st.caption(f"{len(d)} play callers{'' if span == 'This season' else ' (one point per play caller per season)'}, "
+               f"whole regular seasons. {outcome} is over {snaps_note}" +
+               (f", within {up.NEUTRAL_MARGIN} points and outside the 4th quarter" if neutral else "") +
+               ". Dashed line = least-squares fit. r = correlation (-1 to 1); p = the chance of a slope this steep if "
+               "there were no real link (under 0.05 = a clear trend). A trend is a link, not proof of cause: a good "
+               "offense can be the reason a coach can afford to be predictable, or not.")
+
+
+def coach_history_section(loader, x: str, x_title: str, x_fmt: str, more: str, per: float, unit: str,
+                          info: pd.DataFrame, key: str) -> None:
+    """A coach over the years: his score and his offense (vs each season's average) season by season, and, across
+    every coach with 3+ seasons, whether his offense does better in the seasons he scores higher than his own
+    norm. Comparing a coach with himself takes out what doesn't change: his scheme, and often his quarterback."""
+    seasons = dt.available_seasons()
+    c1, c2 = st.columns([2, 1.4])
+    outcome = c2.selectbox("Offense measured by", list(up.OUTCOMES), key=f"{key}_outcome")
+    d = stacked(loader, seasons, False)
+    if d.empty:
+        return
+    d = with_team(d, info, [], "caller")
+    d = d[~d["Play caller"].str.endswith(" play caller")]
+    d["y"] = _vs_season(d, outcome)
+    counts = d.groupby("Play caller")["Season"].nunique()
+    regulars = counts[counts >= 3].sort_values(ascending=False)
+    if regulars.empty:
+        st.info("No play caller has 3+ seasons with enough snaps yet.")
+        return
+    names = sorted(regulars.index)
+    default = "Andy Reid" if "Andy Reid" in names else regulars.index[0]
+    who = c1.selectbox("Play caller", names, index=names.index(default), key=f"{key}_who",
+                       help="Play callers with 3+ seasons on the list (1999 on).")
+    me = d[d["Play caller"] == who].sort_values("Season")
+    fmt = up.OUTCOMES[outcome][0]
+    base = alt.Chart(me).encode(x=alt.X("Season:O", title=None, axis=alt.Axis(labelAngle=0)),
+                                tooltip=["Season", "Team", alt.Tooltip(f"{x}:Q", format=x_fmt),
+                                         alt.Tooltip(f"{outcome}:Q", format=fmt)])
+    top = alt.layer(base.mark_line(color="#888780"), base.mark_circle(size=120, opacity=1).encode(
+        color=alt.Color("color:N", scale=None)), ).encode(
+        y=alt.Y(f"{x}:Q", title=x, scale=alt.Scale(zero=False))).properties(height=200)
+    zero = alt.Chart(pd.DataFrame({"v": [0]})).mark_rule(color="#888780", strokeDash=[4, 4]).encode(y="v:Q")
+    bottom = alt.layer(zero, base.mark_bar(width=18, opacity=0.85).encode(
+        y=alt.Y("y:Q", title=f"{outcome} vs league", axis=alt.Axis(format="+.0%" if "%" in fmt else "+.2f")),
+        color=alt.Color("color:N", scale=None))).properties(height=180)
+    st.altair_chart(alt.vconcat(top, bottom), width="stretch")
+    st.caption(f"Top: his {x.lower()} each season (dot = the team he called plays for). Bottom: his offense's "
+               f"{outcome if outcome == 'EPA/play' else outcome.lower()} that season against the average play caller that "
+               "season.")
+
+    reg = d[d["Play caller"].isin(regulars.index)].copy()
+    for col in (x, "y"):
+        reg[f"{col} vs own"] = reg[col] - reg.groupby("Play caller")[col].transform("mean")
+    t = cm.fit_trend(reg[f"{x} vs own"], reg["y vs own"])
+    st.markdown("###### Within the same coach")
+    st.markdown(cm.trend_sentence(t, more=f"{more} than usual", per=per, unit=unit, outcome=outcome, noun="coaches"))
+    st.caption(f"{len(reg)} seasons from {reg['Play caller'].nunique()} play callers with 3+ seasons. Each season is "
+               "compared with the same coach's average, so what stays the same for him (scheme, often the "
+               "quarterback) drops out.")

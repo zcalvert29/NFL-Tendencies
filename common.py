@@ -142,25 +142,42 @@ def fit_trend(x: pd.Series, y: pd.Series) -> dict:
             "p": float(math.erfc(abs(z) / math.sqrt(2)))}
 
 
-def trend_sentence(t: dict, more: str, per: float, unit: str) -> str:
-    """'**No clear trend.** ...' / '**Yes: ...**' for a fit_trend result of EPA/play against a score, where `more`
-    describes a higher score ("harder to read") and the slope is reported per `per` `unit`."""
+def _effect_text(effect: float, outcome: str) -> str:
+    if outcome == "EPA/play":
+        return f"{effect:+.3f} EPA per play"
+    if outcome == "Points per drive":
+        return f"{effect:+.2f} points per drive"
+    return f"{effect * 100:+.1f} percentage points of {outcome.lower()}"
+
+
+def trend_sentence(t: dict, more: str, per: float, unit: str, outcome: str = "EPA/play",
+                   noun: str = "play callers") -> str:
+    """'**No clear trend.** ...' / '**Yes, a trend:** ...' for a fit_trend result of an outcome (higher = better)
+    against a score, where `more` describes a higher score ("harder to read") and the slope is reported per `per`
+    `unit`."""
     if t["n"] < 8 or pd.isna(t["r"]):
-        return "**Too few play callers to tell.**"
+        return f"**Too few {noun} to tell.**"
     p = "p < 0.01" if t["p"] < 0.01 else f"p = {t['p']:.2f}"
     stats = f"r = {t['r']:+.2f}, {p}, explains {t['r'] ** 2:.0%} of the gap between offenses"
     effect = t["slope"] * per
-    direction = "more" if effect > 0 else "less"
-    size = f"about {effect:+.3f} EPA per play for every {per:g} {unit}"
+    better = effect > 0
+    if outcome == "EPA/play":
+        what, slightly = (f"ran {w} efficient offenses" for w in (("more", "slightly more") if better
+                                                                  else ("less", "slightly less")))
+    elif outcome == "Points per drive":
+        what, slightly = (f"scored {w} points per drive" for w in (("more", "slightly more") if better
+                                                                   else ("fewer", "slightly fewer")))
+    else:
+        what, slightly = (f"had a {w} {outcome.lower()}" for w in (("higher", "slightly higher") if better
+                                                                   else ("lower", "slightly lower")))
+    size = f"about {_effect_text(effect, outcome)} for every {per:g} {unit}"
     if t["p"] < 0.05 and t["r"] ** 2 < 0.05:
-        return (f"**A real but small trend:** play callers who were {more} ran slightly {direction} efficient offenses, "
-                f"{size}. It's more than chance, but it explains little; most of the gap between offenses comes from "
-                f"something else ({stats}).")
+        return (f"**A real but small trend:** {noun} who were {more} {slightly}, {size}. It's more than chance, but it "
+                f"explains little; most of the gap between offenses comes from something else ({stats}).")
     if t["p"] < 0.05:
-        return f"**Yes, a trend:** play callers who were {more} ran {direction} efficient offenses, {size} ({stats})."
+        return f"**Yes, a trend:** {noun} who were {more} {what}, {size} ({stats})."
     if t["p"] < 0.10:
-        return (f"**A weak hint, not a clear trend:** play callers who were {more} ran slightly {direction} efficient "
-                f"offenses, {size} ({stats}).")
+        return f"**A weak hint, not a clear trend:** {noun} who were {more} {slightly}, {size} ({stats})."
     return (f"**No clear trend:** being {more} doesn't go with a better or worse offense here. The line's slope "
             f"({size}) is within what chance alone produces ({stats}).")
 

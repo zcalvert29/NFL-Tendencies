@@ -131,3 +131,13 @@ def test_trend_sentence_flags_small_but_real_trends():
     t = {"n": 900, "slope": -0.002, "intercept": 0.0, "r": -0.09, "p": 0.007}
     text = cm.trend_sentence(t, more="more balanced", per=5, unit="balance points")
     assert text.startswith("**A real but small trend:**") and "slightly less efficient" in text
+
+
+def test_trend_sentence_wording_per_outcome():
+    t = {"n": 900, "slope": -0.01, "intercept": 0.0, "r": -0.3, "p": 0.001}
+    assert "scored fewer points per drive" in cm.trend_sentence(t, "harder to read", 10, "index points",
+                                                                outcome="Points per drive")
+    assert "had a lower success rate" in cm.trend_sentence(t, "harder to read", 10, "index points",
+                                                           outcome="Success rate")
+    assert "-10.0 percentage points of success rate" in cm.trend_sentence(t, "harder to read", 10, "index points",
+                                                                           outcome="Success rate")

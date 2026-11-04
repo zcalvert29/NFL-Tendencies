@@ -322,12 +322,19 @@ def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snap
         st.caption("Not enough film yet to compare with the film index.")
 
     st.subheader("Does balance pay off?")
-    st.markdown("Offensive EPA per play against the balance score: is a more 50/50 play caller a more efficient one?")
-    ui.epa_trend_section(d, ui.balance_seasons, "Balance score", "More balanced by down & distance →", ".0f",
-                         more="more balanced by down & distance", per=5, unit="balance points", info=info,
-                         highlight=highlight, season=season, key="bal_epa_span")
+    st.markdown("Each play caller's offense against his balance score: is a more 50/50 play caller a more effective one?")
+    ui.outcome_trend_section(ui.balance_season, "Balance score", "More balanced by down & distance →", ".0f",
+                             more="more balanced by down & distance", per=5, unit="balance points", info=info,
+                             highlight=highlight, season=season, snaps_note="the same decision-down snaps the score uses",
+                             key="bal_trend")
     if by_formation:
-        st.caption("Pooled seasons use the plain balance score (no formation split).")
+        st.caption("This section uses the plain balance score (no formation split).")
+
+    st.subheader("A coach over the years")
+    st.markdown("His balance and his offense season by season, and whether coaches' offenses do better in the seasons "
+                "they're more balanced than usual.")
+    ui.coach_history_section(ui.balance_season, "Balance score", "Balance score", ".1f",
+                             more="more balanced", per=5, unit="balance points", info=info, key="bal_hist")
 
     st.subheader("Scouting card")
     order = d.sort_values("Balance score", ascending=False)

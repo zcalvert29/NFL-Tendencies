@@ -49,11 +49,15 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   index disagree, plus the scatter); and a **scouting card** with a written verdict, his typical call season by
   season, and his decision downs in the Tendencies tab's down & distance grid (run/pass bar, PROE chip, plays, and
   points lost). The score bars, a points-lost heatmap, and the full table are under **Show the math**.
-- **Does balance pay off?** Offensive EPA per play against the balance score for every play caller, with a
-  least-squares line and a plain verdict on whether a trend exists (correlation, p-value, and how much of the gap
-  between offenses it explains), for this season, the last 5 seasons, or 1999 to this season (pooled seasons measure
-  EPA against each season's average). So far: no link within a season, and pooled over 1999-2025 a tiny one
-  (r ≈ -0.08, 1% of the gap): more balanced play callers did not run better offenses.
+- **Does balance pay off?** Each play caller's offense against his balance score, with a least-squares line and a
+  plain verdict on whether a trend exists (correlation, p-value, and how much of the gap between offenses it
+  explains). Pick the offense measure (EPA/play, success rate, explosive rate, 3rd-down conversion, points per drive),
+  the span (this season, the last 5, or 1999 to this season; pooled seasons compare each offense with that season's
+  average), and **neutral game script only** (within 8 points, outside the 4th quarter). The offense is always
+  measured on the same decision-down snaps the score uses. So far: no link within a season, and pooled over
+  1999-2025 a tiny one (r ≈ -0.08, 1% of the gap): more balanced play callers did not run better offenses.
+- **A coach over the years:** any play caller with 3+ seasons, his balance and his offense season by season; and,
+  across every such coach, whether his offense did better in seasons he was more balanced than his own norm (no).
 - **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
   what a defense sees before the snap. Every caller looks about 5 points more lopsided that way, so the tiers move up.
 - **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
@@ -117,17 +121,43 @@ The same film index in plain words, for anyone who watches football. Pick **View
 - **The two ends of the scale**, a **tier board** of every play caller, and a **four-box picture**: his overall lean
   gives it away (across) vs his looks give it away (up), with the corners named *Tips both*, *Known lean*, *Tells in
   his looks*, *Nothing to go on*.
-- **Does being hard to read pay off?** Offensive EPA per play against the index, with a least-squares line and a
-  plain verdict on the trend, for this season, the last 5 seasons, or 1999 to this season (also under Show the math).
+- **Does being hard to read pay off?** Each play caller's offense against the index, with a least-squares line and a
+  plain verdict on the trend, with the same choices as the Balance Score page (offense measure, span, neutral game
+  script); the offense is measured on the same snaps the index scores (also under Show the math).
   Within one season there's no clear trend; pooled over several seasons, harder-to-read play callers ran slightly
   *less* efficient offenses (about -0.015 to -0.03 EPA per play per 10 index points, r ≈ -0.15 to -0.29). It's a link,
   not a cause: an offense with a great quarterback can afford to be predictable.
+- **A coach over the years:** his index and his offense season by season (Andy Reid was readable and well above
+  average in 2018-22), and, across 812 seasons from 112 play callers with 3+ seasons, the same comparison within each
+  coach: in seasons a coach was harder to read than his own norm, his offense was slightly *less* efficient (about
+  -0.017 EPA per play per 10 index points; small, but more than chance).
 - **Scouting card** for any coach: a written verdict, his biggest tells as cards ("11 personnel: 72% PASS, average
   team 61%"), where his film fooled a defense, and a "Show the math" drawer.
 
 | 2025 | 2026 |
 |---|---|
 | ![2025](docs/glance_2025.png) | ![2026](docs/glance_2026.png) |
+
+### Surprise Plays
+
+Play by play: does a call the defense could see coming do worse? For every film-scored snap, the Unpredictability
+Index's two scouts say how sure they were of the call that came: one knows only league norms, the other also studied
+the play caller's earlier games. Where his film was surer than league norms, his own habits **gave the call away**;
+where it was less sure, they **hid it**.
+
+- **When his own habits gave the call away:** each run or pass against that offense's usual run or pass that season
+  (so a great quarterback's predictable passes don't count as "predictable passes work"; a switch shows the raw
+  numbers), grouped by how much his habits gave it away, with ±2 standard errors and a verdict for runs and passes.
+  2021-25, about 109,000 snaps: **readable runs did worse** (-0.039 EPA per play and 2.7 percentage points lower
+  success for every 10 points his habits gave a run away), while **readable passes didn't** (no EPA difference, and
+  slightly *higher* success). Raw, readable passes look much better, but that's the quarterback: good passing teams
+  are the ones whose film says pass.
+- **Calls the defense saw coming:** outcome by how sure each scout was. His film and league norms nearly match, so this
+  mostly shows the situation (3rd & long throws everyone sees coming work less often).
+- **Play callers:** how often his runs and passes were given away, and how his given-away calls did against his other
+  calls. **Sidebar:** seasons, outcome (EPA/play, success rate, explosive rate), raw vs within-offense, minimum plays.
+
+![Surprise Plays](docs/surprise_2021_2025.png)
 
 ### 3rd & 4th Down
 
@@ -184,6 +214,8 @@ season). The season in progress is re-downloaded every 12 hours so new weeks sho
 app.py              Navigation between the pages
 page_tendencies.py  Tendencies page: sidebar filters, tabs
 page_balance.py     Balance Score page
+page_surprise.py    Surprise Plays page
+surprise.py         Play-by-play surprise analysis (no Streamlit code)
 ui.py               Shared pieces for the play-caller pages (team colors and logos, charts, EPA trend)
 page_unpredictability.py  Unpredictability Index page
 unpredictability.py The unpredictability model (no Streamlit code)

@@ -319,11 +319,18 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
     st.caption("Dashed lines = the average play caller. Hover a logo for his tier.")
 
     st.subheader("Does being hard to read pay off?")
-    st.markdown("Offensive EPA per play against the unpredictability index: do harder-to-read play callers run better "
-                "offenses?")
-    ui.epa_trend_section(g, ui.film_seasons, "Unpredictability index", "Harder to read on film (unpredictability index) →",
-                            ".0f", more="harder to read", per=10, unit="index points", info=info, highlight=highlight,
-                            season=season, key="up_epa_glance")
+    st.markdown("Each play caller's offense against his unpredictability index: do harder-to-read play callers run "
+                "better offenses?")
+    ui.outcome_trend_section(ui.film_season, "Unpredictability index",
+                             "Harder to read on film (unpredictability index) →", ".0f", more="harder to read", per=10,
+                             unit="index points", info=info, highlight=highlight, season=season,
+                             snaps_note="the same snaps the index scores (his 4th game on)", key="up_trend")
+
+    st.subheader("A coach over the years")
+    st.markdown("How readable he was and how his offense did, season by season, and whether coaches' offenses do "
+                "better in the seasons they're harder to read than usual.")
+    ui.coach_history_section(ui.film_season, "Unpredictability index", "Unpredictability index", ".0f",
+                             more="harder to read", per=10, unit="index points", info=info, key="up_hist")
 
     st.subheader("Scouting card")
     order = g.sort_values("Unpredictability index")
@@ -469,10 +476,11 @@ st.caption("Right = his overall pass/run lean gives him away (he's clearly pass-
            "dashed lines = his film on that misleads: the lean or the habits changed from game to game. Lean is most of "
            "the gap between callers; habits are smaller and noisier.")
 
-st.markdown("**Does being hard to read pay off?** Offensive EPA per play against the unpredictability index.")
-ui.epa_trend_section(ranked, ui.film_seasons, "Unpredictability index", "Harder to read on film (unpredictability index) →",
-                         ".0f", more="harder to read", per=10, unit="index points", info=info, highlight=highlight,
-                         season=season, key="up_epa_math")
+st.markdown("**Does being hard to read pay off?** Each play caller's offense against his unpredictability index.")
+ui.outcome_trend_section(ui.film_season, "Unpredictability index",
+                         "Harder to read on film (unpredictability index) →", ".0f", more="harder to read", per=10,
+                         unit="index points", info=info, highlight=highlight, season=season,
+                         snaps_note="the same snaps the index scores (his 4th game on)", key="up_trend_math")
 
 # ---- Why ------------------------------------------------------------------------------------------------------
 st.subheader("Why a play caller is readable or hard to read")
