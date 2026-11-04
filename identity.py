@@ -7,7 +7,8 @@ baseline, so an extreme team can't drag "average" toward itself), then averages 
 
   * Lean (PROE): pass (1/0) minus the chance an average team throws here: nflfastR's xpass (down, distance, field
     position, score, time, timeouts), re-centered on what the rest of the league actually did in the same cell
-    that season. xpass was fit on earlier seasons and drifts: the league now runs more on 3rd/4th & 1-2 than it
+    that season (before 2006, when nflfastR has no xpass, the rest of the league's pass rate in the same down,
+    distance, field zone, and score instead). xpass was fit on earlier seasons and drifts: the league now runs more on 3rd/4th & 1-2 than it
     expects (league short-yardage PROE is -2% to -8% a season), which would make every team look run-heavy there.
   * Shotgun over expected: shotgun (1/0) minus the rest of the league's shotgun rate in the same cell (down ×
     distance × field zone × score state, same season).
@@ -113,7 +114,10 @@ def _rest_of_league_mean(d: pd.DataFrame, values: pd.Series, by: list[pd.Series]
 
 def sample(plays: pd.DataFrame, settings: Settings = Settings()) -> pd.DataFrame:
     """Regular-season snaps where the call is a real choice, with the cell and per-snap measure columns."""
-    d = plays[(plays["season_type"] == "REG") & plays["xpass"].notna() & plays["DN"].notna()].copy()
+    d = plays[(plays["season_type"] == "REG") & plays["DN"].notna()].copy()
+    has_xpass = d["xpass"].notna().mean() > 0.5        # nflfastR's xpass covers 2006 on
+    if has_xpass:
+        d = d[d["xpass"].notna()]
     # A team's snap number in the game, counted before any filtering, so "first 15 snaps" means the opening script.
     d["game_snap"] = d.sort_values(["game_id", "play_id"]).groupby(["game_id", "posteam"]).cumcount() + 1
     keep = d["score_differential"].abs() <= settings.max_margin
@@ -133,7 +137,10 @@ def sample(plays: pd.DataFrame, settings: Settings = Settings()) -> pd.DataFrame
     d["two_rb"] = (rb >= 2).astype(float).where(rb.notna())
     for col in ("shotgun", "spread", "two_te", "two_rb"):
         d[f"exp_{col}"] = _rest_of_league_mean(d, d[col])
-    d["exp_pass"] = (d["xpass"] + _rest_of_league_mean(d, d["PASS"] - d["xpass"])).clip(0.01, 0.99)
+    if has_xpass:
+        d["exp_pass"] = (d["xpass"] + _rest_of_league_mean(d, d["PASS"] - d["xpass"])).clip(0.01, 0.99)
+    else:   # before 2006: the rest of the league's pass rate in the same cell, like the shotgun baseline
+        d["exp_pass"] = _rest_of_league_mean(d, d["PASS"]).clip(0.01, 0.99)
     d["pass_resid"] = d["PASS"] - d["exp_pass"]
     return d
 

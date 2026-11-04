@@ -104,6 +104,26 @@ def fmt(col: str) -> str | None:
     return FORMATS.get(col[4:] if col.startswith("NFL ") else col)
 
 
+# ---- What a season has ---------------------------------------------------------------------------------------
+XPASS_MEASURES = ("Exp. Pass Rate", "PROE")
+XPASS_NOTE = ("PROE and expected pass rate start in 2006: nflfastR's expected-pass model doesn't cover earlier seasons, "
+              "so they're left out here.")
+DIRECTION_NOTE = ("Pass direction and air yards are charted from 2006 on, so pass zones, depth, and the pass chart "
+                  "aren't available for these plays.")
+
+
+def has_xpass(d: pd.DataFrame) -> bool:
+    """True when most of these snaps have nflfastR's expected pass rate and PROE (2006 on; they come together)."""
+    col = "xpass" if "xpass" in d else "pass_oe"
+    return len(d) > 0 and col in d and d[col].notna().mean() > 0.5
+
+
+def has_pass_direction(d: pd.DataFrame) -> bool:
+    """True when most of these passes have a charted direction and air yards (2006 on)."""
+    passes = d[d["PASS"] == 1] if "PASS" in d else d
+    return len(passes) > 0 and passes["Pass Direction"].notna().mean() > 0.5
+
+
 # ---- Tables ------------------------------------------------------------------------------------------------
 def crosstab(d: pd.DataFrame, rows, measures, league: pd.DataFrame | None = None, sort_by_count: bool = False,
              order=None) -> pd.DataFrame:
@@ -112,6 +132,8 @@ def crosstab(d: pd.DataFrame, rows, measures, league: pd.DataFrame | None = None
     The table's overall values go in out.attrs["overall"].
     """
     rows = [rows] if isinstance(rows, str) else list(rows)
+    if not has_xpass(d):   # before 2006: no expected pass rate, so no PROE columns
+        measures = [m for m in measures if m.removeprefix("NFL ") not in XPASS_MEASURES]
     d = d.dropna(subset=rows)
     g = d.groupby(rows, observed=True, sort=True)
     out = pd.DataFrame(index=g.size().index)
@@ -188,8 +210,9 @@ def charting_note(d: pd.DataFrame, col: str, label: str) -> bool:
     """Explain missing FTN charting columns. Returns False when nothing here has the column."""
     have = int(d[col].notna().sum()) if len(d) else 0
     if have == 0:
-        st.info(f"No {label} data for these plays yet. nflverse publishes FTN participation charting (formation, "
-                f"personnel, box count, coverage) after the season, so the season in progress doesn't have it.")
+        st.info(f"No {label} data for these plays. nflverse's participation charting (formation, personnel, box "
+                f"count, coverage) starts in 2016 and is published after each season, so earlier seasons and the "
+                f"season in progress don't have it.")
         return False
     if have < 0.9 * len(d):
         st.caption(f"{have:,} of {len(d):,} plays here have {label} data, so this only covers those plays.")

@@ -13,6 +13,8 @@ colors, and tendency grading, with two additions throughout:
 
 ## Pages
 
+Every page covers 1999 to the season in progress (see [Data](#data) for what starts later).
+
 ### Tendencies
 
 Pick an offense in the sidebar. Five tabs:
@@ -95,8 +97,12 @@ which clues give each caller away; lean vs habits and EPA vs index scatters; a *
 summary, the looks where his film caught a tell, and the looks where it misled); and each play caller's index across
 seasons. **Sidebar:** season, weeks, compare play callers or teams, minimum snaps, highlight teams.
 
-**Play callers** come from `play_callers.csv` (season, team, play caller, role, first and last week, confidence),
-filled in for 2024-2026 from team and media reports. A season without rows treats each team as one play caller.
+**Play callers** come from `play_callers.csv` (season, team, play caller, role, first and last week, confidence,
+note), covering every team from 1999 through 2026 with mid-season changes (958 rows). No public dataset of play
+callers exists, so the list was built from each game's head coach in the play-by-play, coordinator histories, and
+team and media reports. Confidence: **high** (765 rows) = widely reported; **medium** (179) = reported but shared,
+disputed, or not confirmed in a source; **low** (14) = best guess from who held the coordinator job, mostly Atlanta
+2000-03, Arizona 2002-03, and a few interim stretches. Corrections are one CSV row each.
 
 **What it shows so far:** most of the reliable difference between callers is lean (a defense that knows McVay throws
 ~11 points over expected all year can read him); habits by look are real but small and noisier. Split-half reliability
@@ -156,13 +162,46 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
 |---|---|
 | ![2026](docs/balance_2026.png) | ![2025](docs/balance_2025.png) |
 
+### 3rd & 4th Down
+
+Judges a 3rd-down call by the whole **series**: did the 3rd-down play, plus the 4th-down play after it if the team
+went for it, get a first down? Every 3rd-down run or pass is followed to the next 4th-down run, pass, punt, or field
+goal in the same drive. Defaults to 3rd & 4-6 over the last five complete seasons; the sidebar picks the seasons
+(1999 on), the distance, and the field position.
+
+- **Pass vs run:** moved the chains on 3rd vs won the series. On 3rd & 4-6 in 2021-25, runs convert fewer 3rd downs
+  than passes (39% vs 44%) but win more series (55% vs 49%): a stopped run leaves 4th & 1-2 37% of the time (12% for a
+  pass), and teams go for it after 44% of short runs vs 15% of short passes.
+- **How the series plays out** (converted on 3rd or 4th, stopped on 4th, kicked, turned over), **why** (4th-down
+  distance, go-for-it and 4th-down conversion rates), **by distance and field position**, **over the years** (in 1999
+  teams rarely went for it and runs won fewer series than passes), and **play callers** for any season, with their
+  run share, series rate, and go-for-it rate.
+- **Read with care:** the run's edge is mostly the two-down plan, not the play (coaches who run there already intend
+  to go for it), and runs on 3rd & medium are rare, so a coach's own numbers rest on a handful of plays.
+
+![3rd & 4th Down](docs/series_2021_2025.png)
+
 ## Data
 
 - **Play-by-play:** nflfastR from the [nflverse data releases](https://github.com/nflverse/nflverse-data/releases):
   EPA, success, `xpass` / `pass_oe`, pass direction and air yards, run location and gap.
-- **Participation charting:** nflverse's FTN participation file adds formation, personnel, men in the box, and
-  coverage. nflverse publishes it after each season, so **the season in progress has no personnel, box count, or
+- **Participation charting** (2016 on): nflverse's participation file adds formation, personnel, men in the box,
+  and coverage. nflverse publishes it after each season, so **the season in progress has no personnel, box count, or
   coverage yet**; formation falls back to nflfastR's shotgun / under center flag, and those tables say so.
+- **Seasons:** 1999 to the season in progress. Not everything goes back that far, and anything a season doesn't
+  have is left out of that season's pages and scores rather than shown blank:
+
+  | Data | From |
+  |---|---|
+  | Every play, EPA, success, shotgun, run lane | 1999 |
+  | Expected pass rate (`xpass`) and PROE; pass direction and air yards | 2006 |
+  | Personnel, formation, box count, coverage | 2016 |
+  | Motion, play action, RPO, backfield count | 2022 |
+
+  Before 2006 the Tendencies tab drops PROE columns and charts and the pass zones and pass chart; the Identity page
+  measures lean against the rest of the league's pass rate in the same down, distance, field zone, and score (like
+  shotgun over expected) instead of `xpass`. nflfastR uses today's team abbreviations throughout (the 1999 Rams are
+  `LA`, the Chargers `LAC`, the Raiders `LV`), so old seasons show today's team names and logos.
 - **FTN charting** (2022 on, updated during the season): motion at the snap, play action, RPO, screens, and the
   number of backs in the backfield. A season file saved before this was added downloads again once.
 
@@ -178,6 +217,8 @@ page_identity.py    Play-Calling Identity page
 identity.py         Play-calling identity measures (no Streamlit code)
 page_unpredictability.py  Unpredictability Index page
 unpredictability.py The unpredictability model (no Streamlit code)
+page_series.py      3rd & 4th Down page
+series.py           3rd-down series outcomes (no Streamlit code)
 play_callers.csv    Who called each team's offensive plays, by season and week
 data.py             Downloads nflfastR pbp + participation; builds the app's columns
 common.py           Metrics, NFL comparison columns, table colors, tendency badges, split bars
