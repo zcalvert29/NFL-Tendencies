@@ -238,7 +238,7 @@ def caller_table(d: pd.DataFrame, clues: list[str]) -> pd.DataFrame:
         y = s["PASS"]
         row = {"Team": team, "Play caller": caller, "Weeks": f"{g['Week'].min()}-{g['Week'].max()}",
                "Games": g["game_id"].nunique(), "Snaps": len(g), "Scored snaps": len(s),
-               "Pass rate": g["PASS"].mean(), "PROE": g["pass_oe"].mean() / 100, "EPA/play": g["epa"].mean(),
+               "Pass rate": g["PASS"].mean(), "PROE": g["pass_oe"].mean() / 100, "EPA/play": s["epa"].mean(),
                "Generic bits": s["bits_league"].mean(), "Edge": s["gain_film"].mean(),
                "Lean edge": s["gain_lean"].mean(), "League tells": (s["bits_xpass"] - s["bits_league"]).mean(),
                "Lean": (s["PASS"] - s["p_league"]).mean(),
@@ -379,6 +379,8 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
     """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, and the
     cells that cost him the most and the least (8+ snaps)."""
     c = balance_cells(d, by_formation)
+    counted = d[d["dd"].isin(BALANCE_CELLS)]        # EPA on the same decision-down snaps the score uses
+    epa = counted.groupby(["posteam", "caller"])["epa"].mean() if "epa" in d else pd.Series(dtype=float)
     rows = []
     for (team, caller), g in c.groupby(["posteam", "caller"], sort=False):
         n = g["Snaps"].sum()
@@ -392,7 +394,8 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
                      "Raw balance score": 100 * (1 - 4 * raw),
                      "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
                      "Most lopsided": "" if worst is None else f"{worst['cell']}: {worst['Pass rate']:.0%} pass",
-                     "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass"})
+                     "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass",
+                     "EPA/play": epa.get((team, caller), np.nan)})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
 
@@ -565,3 +568,34 @@ def verdict(r: pd.Series, tl: list[dict], ml: list[dict]) -> str:
     if name == "Mixes It Up":
         return f"{last}'s film barely helps. The habits he showed in earlier games mostly didn't hold up.{miss}"
     return f"{last}'s film works against you: what he did in earlier games isn't what he did next.{miss}"
+
+
+# ---- Outcomes: did the offense work? ---------------------------------------------------------------------------
+NEUTRAL_MARGIN = 8        # "neutral game script": within one score and outside the 4th quarter
+OUTCOMES = {   # name -> (format, what it is)
+    "EPA/play": ("+.3f", "Expected points added per play."),
+    "Success rate": (".1%", "Share of plays with positive EPA."),
+    "Explosive rate": (".1%", "Runs of 10+ yards and passes of 20+."),
+    "3rd-down conversion": (".1%", "Share of his 3rd downs that got a first down (or touchdown) on the play."),
+    "Points per drive": (".2f", "Touchdown = 7, field goal = 3, over the drives that include these snaps."),
+}
+DRIVE_POINTS = {"Touchdown": 7, "Field goal": 3}
+
+
+def outcomes(snaps: pd.DataFrame, neutral: bool = False) -> pd.DataFrame:
+    """Per stint (Team, Play caller): every OUTCOMES measure over these snaps (pass the same snaps a score uses).
+    neutral=True keeps only snaps within NEUTRAL_MARGIN points and outside the 4th quarter, so a team protecting a
+    lead (and running into a stacked box) or chasing one doesn't skew the result."""
+    s = snaps
+    if neutral:
+        s = s[(s["score_differential"].abs() <= NEUTRAL_MARGIN) & (s["qtr"] <= 3)]
+    keys = ["posteam", "caller"]
+    g = s.groupby(keys)
+    out = pd.DataFrame({"EPA/play": g["epa"].mean(), "Success rate": g["success"].mean(),
+                        "Explosive rate": g["explosive"].mean(), "Outcome snaps": g.size()})
+    third = s[s["DN"] == 3]
+    out["3rd-down conversion"] = third.groupby(keys)["first_down"].mean()
+    drives = s.drop_duplicates(["game_id", "fixed_drive"])
+    out["Points per drive"] = (drives["fixed_drive_result"].map(DRIVE_POINTS).fillna(0)
+                               .groupby([drives["posteam"], drives["caller"]]).mean())
+    return out.reset_index().rename(columns={"posteam": "Team", "caller": "Play caller"})

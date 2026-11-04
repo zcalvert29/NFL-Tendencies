@@ -9,6 +9,8 @@ league's pass rate on 3rd & long.
 """
 from __future__ import annotations
 
+import math
+
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -122,6 +124,62 @@ def has_pass_direction(d: pd.DataFrame) -> bool:
     """True when most of these passes have a charted direction and air yards (2006 on)."""
     passes = d[d["PASS"] == 1] if "PASS" in d else d
     return len(passes) > 0 and passes["Pass Direction"].notna().mean() > 0.5
+
+
+# ---- Trends ------------------------------------------------------------------------------------------------
+def fit_trend(x: pd.Series, y: pd.Series) -> dict:
+    """Least-squares line y = a + b x, the correlation r, and a two-sided p-value for "no link" (Fisher's z test,
+    close to the usual t test for 30+ points)."""
+    ok = x.notna() & y.notna()
+    x, y = x[ok].astype(float), y[ok].astype(float)
+    n = len(x)
+    if n < 4 or x.std() == 0 or y.std() == 0:
+        return {"n": n, "slope": np.nan, "intercept": np.nan, "r": np.nan, "p": np.nan}
+    slope, intercept = np.polyfit(x, y, 1)
+    r = float(np.corrcoef(x, y)[0, 1])
+    z = np.arctanh(np.clip(r, -0.999999, 0.999999)) * np.sqrt(n - 3)
+    return {"n": n, "slope": float(slope), "intercept": float(intercept), "r": r,
+            "p": float(math.erfc(abs(z) / math.sqrt(2)))}
+
+
+def _effect_text(effect: float, outcome: str) -> str:
+    if outcome == "EPA/play":
+        return f"{effect:+.3f} EPA per play"
+    if outcome == "Points per drive":
+        return f"{effect:+.2f} points per drive"
+    return f"{effect * 100:+.1f} percentage points of {outcome.lower()}"
+
+
+def trend_sentence(t: dict, more: str, per: float, unit: str, outcome: str = "EPA/play",
+                   noun: str = "play callers") -> str:
+    """'**No clear trend.** ...' / '**Yes, a trend:** ...' for a fit_trend result of an outcome (higher = better)
+    against a score, where `more` describes a higher score ("harder to read") and the slope is reported per `per`
+    `unit`."""
+    if t["n"] < 8 or pd.isna(t["r"]):
+        return f"**Too few {noun} to tell.**"
+    p = "p < 0.01" if t["p"] < 0.01 else f"p = {t['p']:.2f}"
+    stats = f"r = {t['r']:+.2f}, {p}, explains {t['r'] ** 2:.0%} of the gap between offenses"
+    effect = t["slope"] * per
+    better = effect > 0
+    if outcome == "EPA/play":
+        what, slightly = (f"ran {w} efficient offenses" for w in (("more", "slightly more") if better
+                                                                  else ("less", "slightly less")))
+    elif outcome == "Points per drive":
+        what, slightly = (f"scored {w} points per drive" for w in (("more", "slightly more") if better
+                                                                   else ("fewer", "slightly fewer")))
+    else:
+        what, slightly = (f"had a {w} {outcome.lower()}" for w in (("higher", "slightly higher") if better
+                                                                   else ("lower", "slightly lower")))
+    size = f"about {_effect_text(effect, outcome)} for every {per:g} {unit}"
+    if t["p"] < 0.05 and t["r"] ** 2 < 0.05:
+        return (f"**A real but small trend:** {noun} who were {more} {slightly}, {size}. It's more than chance, but it "
+                f"explains little; most of the gap between offenses comes from something else ({stats}).")
+    if t["p"] < 0.05:
+        return f"**Yes, a trend:** {noun} who were {more} {what}, {size} ({stats})."
+    if t["p"] < 0.10:
+        return f"**A weak hint, not a clear trend:** {noun} who were {more} {slightly}, {size} ({stats})."
+    return (f"**No clear trend:** being {more} doesn't go with a better or worse offense here. The line's slope "
+            f"({size}) is within what chance alone produces ({stats}).")
 
 
 # ---- Tables ------------------------------------------------------------------------------------------------
