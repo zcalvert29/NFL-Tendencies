@@ -181,3 +181,9 @@ def test_balance_verdict_mentions_two_down_third_and_medium():
     assert "2nd & long" in text and "first of two downs" in text
     assert "throws 60% (league 92%)" in text
     assert "His true coin flip: 1st & long (50% pass)." in text
+
+
+def test_balance_table_has_epa():
+    d = up.sample(league(), 2025, callers=NO_CALLERS)
+    t = up.balance_table(d).set_index("Team")
+    assert np.allclose(t["EPA/play"], d.groupby("posteam")["epa"].mean().reindex(t.index))

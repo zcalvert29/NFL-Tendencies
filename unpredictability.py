@@ -379,6 +379,7 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
     """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, and the
     cells that cost him the most and the least (8+ snaps)."""
     c = balance_cells(d, by_formation)
+    epa = d.groupby(["posteam", "caller"])["epa"].mean() if "epa" in d else pd.Series(dtype=float)  # all his snaps
     rows = []
     for (team, caller), g in c.groupby(["posteam", "caller"], sort=False):
         n = g["Snaps"].sum()
@@ -392,7 +393,8 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
                      "Raw balance score": 100 * (1 - 4 * raw),
                      "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
                      "Most lopsided": "" if worst is None else f"{worst['cell']}: {worst['Pass rate']:.0%} pass",
-                     "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass"})
+                     "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass",
+                     "EPA/play": epa.get((team, caller), np.nan)})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
 

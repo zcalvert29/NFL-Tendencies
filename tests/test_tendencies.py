@@ -111,3 +111,23 @@ def test_red_zone_trips():
     t = tab_red_zone.trips(snaps)
     assert list(t["fixed_drive"]) == [1, 2]                  # drive 3 never got inside the 20
     assert list(t["points"]) == [7, 3]
+
+
+def test_fit_trend_and_sentence():
+    rng = np.random.default_rng(0)
+    x = pd.Series(rng.normal(50, 10, 200))
+    strong = cm.fit_trend(x, 0.01 * x + pd.Series(rng.normal(0, 0.02, 200)))
+    assert strong["slope"] == pytest.approx(0.01, abs=0.002) and strong["p"] < 0.001 and strong["r"] > 0.9
+    text = cm.trend_sentence(strong, more="harder to read", per=10, unit="index points")
+    assert text.startswith("**Yes, a trend:**") and "more efficient" in text and "EPA per play for every 10 index points" in text
+    assert "p < 0.01" in text
+    none = cm.fit_trend(x, pd.Series(rng.normal(0, 0.1, 200)))
+    assert none["p"] > 0.05
+    assert cm.trend_sentence(none, more="harder to read", per=10, unit="index points").startswith("**No clear trend")
+    assert cm.trend_sentence(cm.fit_trend(x[:5], x[:5]), "x", 1, "u") == "**Too few play callers to tell.**"
+
+
+def test_trend_sentence_flags_small_but_real_trends():
+    t = {"n": 900, "slope": -0.002, "intercept": 0.0, "r": -0.09, "p": 0.007}
+    text = cm.trend_sentence(t, more="more balanced", per=5, unit="balance points")
+    assert text.startswith("**A real but small trend:**") and "slightly less efficient" in text

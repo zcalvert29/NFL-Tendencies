@@ -9,77 +9,14 @@ import streamlit as st
 
 import common as cm
 import data as dt
+import ui
 import unpredictability as up
 
-LOGO = 26          # logo size on the bar chart, px
 PROFILES = {"Hard to read": cm.PASS_C, "NFL average": "#888780", "Readable": "#D85A30", "Too few snaps": "#B4B2A9"}
 LOOK_MIN_EDGE = 0.3  # a look's edge share (mbits per snap) must pass this to count as a tell or a miss
 
 
-@st.cache_data(show_spinner="Loading nflfastR play-by-play…", ttl=dt.REFRESH_HOURS * 3600)
-def plays(season: int) -> pd.DataFrame:
-    return dt.load_seasons([season])
-
-
-@st.cache_data(show_spinner="Scouting every play caller's film…", ttl=dt.REFRESH_HOURS * 3600)
-def scored(season: int, weeks: tuple[int, int] | None, by: str) -> tuple[pd.DataFrame, list[str]]:
-    d, clues = up.score(plays(season), season, weeks, by=by)
-    keep = ["posteam", "caller", "Week", "game_id", "PASS", "pass_oe", "epa", "scored", "xpass"]
-    keep += [c for c in d.columns if c.startswith(("p_", "gain_", "bits_"))]
-    keep += [c for k in clues for c in up.CLUES[k][1]]
-    return d[keep], clues
-
-
-@st.cache_data(show_spinner=False)
-def team_info() -> pd.DataFrame:
-    """Team names, colors, divisions, and logos (embedded data URIs; see data.team_logos)."""
-    try:
-        info = dt.load_teams()
-    except Exception:
-        return pd.DataFrame(columns=["team_name", "team_color", "team_color2", "team_conf", "team_division", "logo"])
-    return info.assign(logo=pd.Series(dt.team_logos(info)))
-
-
-def _luminance(hex_color: str) -> float:
-    h = str(hex_color).lstrip("#")
-    if len(h) != 6:
-        return 0.5
-    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def with_team(t: pd.DataFrame, info: pd.DataFrame, highlight: list[str], by: str) -> pd.DataFrame:
-    """The caller table plus what every chart needs: color (readable on this theme), logo, label, opacity."""
-    d = t.copy()
-    dark = cm.theme_ink() == "#FAFAFA"
-    color, color2 = d["Team"].map(info.get("team_color", {})), d["Team"].map(info.get("team_color2", {}))
-    d["color"] = [c2 if dark and _luminance(c) < 0.06 and isinstance(c2, str) else c if isinstance(c, str) else "#888780"
-                  for c, c2 in zip(color, color2)]
-    d["logo"] = d["Team"].map(info.get("logo", {})).fillna("")
-    d["Team name"] = d["Team"].map(info.get("team_name", {})).fillna(d["Team"])
-    last = d["Play caller"].str.split().str[-1]
-    unlisted = d["Play caller"].str.endswith(" play caller")      # no row in play_callers.csv for this team-season
-    d["label"] = np.where((by == "team") | unlisted, d["Team"], last + " (" + d["Team"] + ")")
-    d["opacity"] = np.where(d["Team"].isin(highlight) | (len(highlight) == 0), 1.0, 0.25)
-    d["Film edge"] = d["Edge"] * 100                      # bits per 100 snaps
-    d["Lean part"], d["Look part"] = d["Lean edge"] * 100, d["Look edge"] * 100
-    d["Accuracy gain"] = d["Film accuracy"] - d["Generic accuracy"]
-    return d
-
-
 # ---- Charts --------------------------------------------------------------------------------------------------
-TIP = [alt.Tooltip("Play caller:N"), alt.Tooltip("Team name:N", title="Team"), "Weeks:N", "Profile:N",
-       alt.Tooltip("Unpredictability index:Q", format=".0f"),
-       alt.Tooltip("Film edge:Q", format="+.2f", title="Film edge (bits / 100 snaps)"),
-       alt.Tooltip("Lean part:Q", format="+.2f", title="  from his overall lean"),
-       alt.Tooltip("Look part:Q", format="+.2f", title="  from situations & looks"),
-       alt.Tooltip("Lean:Q", format="+.1%", title="Lean (pass rate vs NFL scout)"),
-       alt.Tooltip("Uncertainty removed:Q", format="+.1%", title="Uncertainty film removes"),
-       alt.Tooltip("Generic accuracy:Q", format=".1%", title="NFL-scout accuracy"),
-       alt.Tooltip("Film accuracy:Q", format=".1%", title="Film-scout accuracy"),
-       "Biggest tell:N", alt.Tooltip("Scored snaps:Q", format=",")]
-
-
 def index_chart(d: pd.DataFrame) -> alt.LayerChart:
     """Bars from 50 (an average play caller): up = harder to read, down = easier. Logo at the end of each bar."""
     order = list(d.sort_values("Unpredictability index", ascending=False)["label"])
@@ -90,14 +27,14 @@ def index_chart(d: pd.DataFrame) -> alt.LayerChart:
                                                                 labelOverlap=False))
     y = alt.Y("Unpredictability index:Q", title="Unpredictability index (50 = NFL average)",
               scale=alt.Scale(domain=[min(lo - pad, 45), max(hi + pad, 55)]))
-    base = alt.Chart(d).encode(x=x, tooltip=TIP)
+    base = alt.Chart(d).encode(x=x, tooltip=ui.TIP)
     bars = base.mark_bar(cornerRadius=3).encode(y=y, y2="base:Q", color=alt.Color("color:N", scale=None),
                                                 opacity=alt.Opacity("opacity:Q", scale=None))
     up_ = base.transform_filter("datum['Unpredictability index'] >= 50").mark_image(
-        width=LOGO, height=LOGO, baseline="bottom").encode(y="Unpredictability index:Q", url="logo:N",
+        width=ui.LOGO, height=ui.LOGO, baseline="bottom").encode(y="Unpredictability index:Q", url="logo:N",
                                                            opacity=alt.Opacity("opacity:Q", scale=None))
     down = base.transform_filter("datum['Unpredictability index'] < 50").mark_image(
-        width=LOGO, height=LOGO, baseline="top").encode(y="Unpredictability index:Q", url="logo:N",
+        width=ui.LOGO, height=ui.LOGO, baseline="top").encode(y="Unpredictability index:Q", url="logo:N",
                                                         opacity=alt.Opacity("opacity:Q", scale=None))
     rules = alt.Chart(pd.DataFrame({"v": [40, 50, 60]})).mark_rule(color="#888780").encode(
         y="v:Q", strokeDash=alt.condition("datum.v == 50", alt.value([1, 0]), alt.value([4, 4])))
@@ -124,38 +61,6 @@ def clue_heatmap(d: pd.DataFrame, clues: list[str]) -> alt.Chart:
         x=alt.X("Clue:N", sort=labels), y=alt.Y("label:N", sort=order), text=alt.Text("edge:Q", format="+.1f"),
         color=alt.condition(f"abs(datum.edge) > {lim * 0.6}", alt.value("white"), alt.value(cm.theme_ink())))
     return alt.layer(rect, text).properties(height=max(22 * len(d), 200))
-
-
-def logo_scatter(d: pd.DataFrame, x: str, y: str, x_title: str, y_title: str, x_fmt: str, y_fmt: str,
-                 trend: bool = False, ref: tuple[float | None, float | None] = (None, None)) -> alt.LayerChart:
-    """One play caller per point, drawn as the team logo (a dot in the team's color if the logo is missing)."""
-    d = d.dropna(subset=[x, y])
-    # Name only the points at the edges (the middle of the cloud overlaps); hover names the rest.
-    rank = lambda s: s.rank(pct=True)
-    d = d.assign(show_label=(rank(d[x]) - 0.5).abs().ge(0.4) | (rank(d[y]) - 0.5).abs().ge(0.4))
-    pad_x, pad_y = (d[x].max() - d[x].min()) * 0.08 or 0.01, (d[y].max() - d[y].min()) * 0.08 or 0.01
-    base = alt.Chart(d).encode(
-        x=alt.X(f"{x}:Q", title=x_title, scale=alt.Scale(domain=[d[x].min() - pad_x, d[x].max() + pad_x]),
-                axis=alt.Axis(format=x_fmt, tickCount=8)),
-        y=alt.Y(f"{y}:Q", title=y_title, scale=alt.Scale(domain=[d[y].min() - pad_y, d[y].max() + pad_y]),
-                axis=alt.Axis(format=y_fmt, tickCount=8)), tooltip=TIP)
-    layers = []
-    for axis, v in zip("xy", ref):
-        if v is not None:
-            layers.append(alt.Chart(pd.DataFrame({"v": [v]})).mark_rule(color="#888780", strokeDash=[4, 4])
-                          .encode(**{axis: alt.X("v:Q", scale=alt.Scale(zero=False)) if axis == "x" else
-                                     alt.Y("v:Q", scale=alt.Scale(zero=False))}))
-    if trend:
-        layers.append(base.transform_regression(x, y).mark_line(color="#888780", strokeDash=[6, 4], strokeWidth=2)
-                      .encode(tooltip=alt.value(None)))
-    layers += [
-        base.transform_filter("datum.logo == ''").mark_circle(size=500).encode(
-            color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None)),
-        base.mark_image(width=36, height=36).encode(url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None)),
-        base.transform_filter("datum.show_label").mark_text(dy=24, fontSize=10, color=cm.theme_ink()).encode(
-            text="label:N", opacity=alt.Opacity("opacity:Q", scale=None)),
-    ]
-    return alt.layer(*layers).properties(height=460)
 
 
 def history_chart(h: pd.DataFrame) -> alt.Chart:
@@ -313,433 +218,18 @@ to his lean.
 Positive = the film read him there. Negative = his film said one thing and he did another.
 """
 
-# ---- Balance score view --------------------------------------------------------------------------------------
-BALANCE_COLORS = {"Coin Flip": "#2F8C86", "Balanced": "#5A9E6F", "Average": "#8A949A", "Leans": "#D9822B",
-                  "Lopsided": "#C8321E"}
-DOWN_COLORS = {"1st": "#3B5EA8", "2nd": "#7FA2E0", "3rd": "#D9822B", "4th": "#C8321E"}
-BALANCE_DEFINITIONS = f"""
-**Balance score** = how close to 50/50 a play caller is in each down & distance, on decision downs only.
-
-1. For each down & distance, take his pass rate there and square its gap from 50%.
-2. Take out the part of that gap a small sample creates by chance, p(1 − p)/(n − 1): a cell with 4 snaps that went
-   3-1 isn't a tendency yet.
-3. Average over the cells, weighted by how many snaps he ran in each.
-4. Flip it: **100 × (1 − 4 × that average)**. 100 = a coin flip in every down & distance; 0 = the same call every time.
-
-**Typical call** says the same thing in football terms: the run/pass split of his typical decision down. A score of
-87.5 is a 68/32 call (the typical gap from 50/50 is √((1 − score/100) / 4)). **Tiers** by typical call: Coin Flip
-(62/38 or closer), Balanced (to 65/35), Average (to 68/32), Leans (to 71/29), Lopsided (beyond). With the formation
-split on, every caller looks about 5 points more lopsided, so the tiers move up 5 points.
-
-**Points lost** per down: how much each down & distance takes off his score. They add up to 100 minus his score, so
-they show where his balance goes.
-
-**Counted:** every 1st and 2nd down, 3rd & short and medium, 4th & short. **Left out:** 3rd & long and extra long,
-4th & medium and longer. Every team throws on 3rd & 7+, and 4th & 4+ is a handful of snaps a season, nearly all
-passes. 3rd & medium stays on purpose: most coaches throw there, and the ones who don't are playing it as the first of
-two downs, ready to go for it on 4th.
-
-**Split by shotgun / under center** (sidebar): scores each down & distance separately from shotgun and from under
-center, which is closer to what a defense sees before the snap.
-
-**Snaps used:** regular season, outside the last 2 minutes of each half, score within {up.MAX_MARGIN} (same as the film
-index). **Reliability:** each coach's score in his odd vs even games, correlated across coaches (1 = all real
-differences, 0 = all noise).
-"""
-
-
-@st.cache_data(show_spinner="Measuring balance…", ttl=dt.REFRESH_HOURS * 3600)
-def balance(season: int, weeks: tuple[int, int] | None, by: str, by_formation: bool = False):
-    """(caller table, per-cell table, split-half reliability, the league's 3rd & medium pass rate)."""
-    d = up.sample(plays(season), season, weeks)
-    if by == "team":
-        d["caller"] = d["posteam"]
-    cells = up.balance_cells(d, by_formation)
-    third = cells[cells["dd"] == "3rd & medium"]
-    league_third = float((third["Pass rate"] * third["Snaps"]).sum() / third["Snaps"].sum()) if len(third) else np.nan
-    return (up.balance_table(d, by_formation), cells, up.balance_reliability(d, by_formation), league_third)
-
-
-def balance_anchors_html(g: pd.DataFrame) -> str:
-    def one(r, label):
-        return (f'<div class="gl-anchor">{badge_html(r, 52)}<div style="min-width:0">'
-                f'<div class="gl-lbl" style="color:{BALANCE_COLORS[r["Balance tier"]]}">{label}</div>'
-                f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · typical down is a '
-                f'{up.split_text(r["Typical split"])} call</div></div></div>')
-    s = g.sort_values("Balance score", ascending=False)
-    return GLANCE_CSS + f'<div class="gl-row">{one(s.iloc[0], "Most balanced")}{one(s.iloc[-1], "Most lopsided")}</div>'
-
-
-def balance_board_html(g: pd.DataFrame) -> str:
-    cols = []
-    for _, name in up.BALANCE_TIERS:
-        color = BALANCE_COLORS[name]
-        rows = g[g["Balance tier"] == name].sort_values("Balance score", ascending=False)
-        chips = "".join(f'<div class="gl-chip">{badge_html(r)}<span>{r["Play caller"]}</span>'
-                        f'<span class="q">{up.split_text(r["Typical split"])}</span></div>'
-                        for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
-        cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
-                    f'<div class="gl-def">{up.BALANCE_TIER_HELP[name]}</div>{chips}</div>')
-    return GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
-
-
-def points_lost_chart(cells: pd.DataFrame, g: pd.DataFrame) -> alt.Chart:
-    """One bar per coach: the points each down & distance takes off his score, colored by down."""
-    c = cells.merge(g[["Team", "Play caller", "label", "Balance score"]], left_on=["posteam", "caller"],
-                    right_on=["Team", "Play caller"])
-    c = c[c["Cost"] > 0].assign(Down=lambda x: x["dd"].str[:3])
-    order = list(g.sort_values("Balance score", ascending=False)["label"])
-    cell_order = [x for x in up.BALANCE_CELLS]
-    c["k"] = c["dd"].map({v: i for i, v in enumerate(cell_order)})
-    return alt.Chart(c).mark_bar(stroke=cm.theme_bg(), strokeWidth=0.5).encode(
-        y=alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False)),
-        x=alt.X("sum(Cost):Q", title="Balance points lost (100 − his score)"),
-        color=alt.Color("Down:N", scale=alt.Scale(domain=list(DOWN_COLORS), range=list(DOWN_COLORS.values())),
-                        legend=alt.Legend(title="Down", orient="top")),
-        order=alt.Order("k:Q"),
-        tooltip=["Play caller", alt.Tooltip("cell:N", title="Down & distance"), alt.Tooltip("Pass rate:Q", format=".0%"),
-                 "Snaps", alt.Tooltip("Cost:Q", format=".1f", title="Points lost")],
-    ).properties(height=19 * len(order) + 30)
-
-
-def third_medium_chart(tm: pd.DataFrame, league: float) -> alt.LayerChart:
-    """3rd & medium pass rate per coach; orange = plays it as a two-down set."""
-    lo = min(0.5, float(tm["Pass rate"].min()) - 0.05)
-    tm = tm.assign(two=tm["Pass rate"] <= league - up.THIRD_MEDIUM_GAP, lo=lo)   # bars start at the chart's edge
-    order = list(tm.sort_values("Pass rate")["label"])
-    base = alt.Chart(tm).encode(y=alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False)),
-                                tooltip=["Play caller", alt.Tooltip("Pass rate:Q", format=".0%"), "Snaps"])
-    bars = base.mark_bar(cornerRadius=2).encode(
-        x=alt.X("Pass rate:Q", title="Pass rate on 3rd & medium (4-6 to go)", axis=alt.Axis(format=".0%"),
-                scale=alt.Scale(domain=[lo, 1])), x2="lo:Q",
-        color=alt.condition("datum.two", alt.value("#D9822B"), alt.value("#8A949A")))
-    text = base.mark_text(align="left", dx=3, fontSize=10, color=cm.theme_ink()).encode(
-        x="Pass rate:Q", text=alt.Text("Pass rate:Q", format=".0%"))
-    rule = alt.Chart(pd.DataFrame({"v": [league]})).mark_rule(color=cm.theme_ink(), strokeDash=[4, 4]).encode(x="v:Q")
-    return alt.layer(bars, rule, text).properties(height=19 * len(order) + 10)
-
-
-def dd_grid_html(cells: pd.DataFrame, by_formation: bool) -> str:
-    """His decision downs in the Tendencies tab's down & distance grid: the run/pass bar, PROE, plays, and the
-    points each one costs his balance. Downs that aren't counted are grayed out."""
-    dists = [x.split(" (")[0] for x in dt.DISTANCE_ORDER]
-    head = '<div></div>' + "".join(f'<div style="font-size:12px;text-align:center;opacity:.65">{x}</div>' for x in dists)
-    out = [head]
-    for dn in ("1st", "2nd", "3rd", "4th"):
-        out.append(f'<div style="font-weight:600;font-size:14px;display:flex;align-items:center">{dn}</div>')
-        for dist in dists:
-            key = f"{dn} & {dist.lower()}"
-            g = cells[cells["dd"] == key]
-            if key not in up.BALANCE_CELLS:
-                out.append(f'<div style="{cm.CARD};font-size:12px;opacity:.45">Not counted</div>')
-                continue
-            if g.empty:
-                out.append(f'<div style="{cm.CARD};font-size:12px;opacity:.65">No plays</div>')
-                continue
-            n = int(g["Snaps"].sum())
-            pr = float((g["Pass rate"] * g["Snaps"]).sum() / n)
-            proe = float((g["PROE"] * g["Snaps"]).sum() / n)
-            cost = float(g["Cost"].sum())
-            lead = f"Pass {pr:.0%}" if pr >= 0.5 else f"Run {1 - pr:.0%}"
-            chip_c = cm.PASS_C if proe > 0 else cm.RUN_C
-            chip = (f'<span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;'
-                    f'border:1px solid {chip_c};color:{chip_c}">PROE {proe * 100:+.0f}%</span>'
-                    if abs(proe) >= 0.05 and n >= 5 else '<span></span>')
-            form = ""
-            if by_formation and len(g) > 1:
-                form = '<div style="font-size:11px;opacity:.7">' + " · ".join(
-                    f'{"Gun" if f == "Shotgun" else "UC"} {p:.0%}' for f, p in zip(g["Formation"], g["Pass rate"])) + "</div>"
-            cost_txt = f"−{cost:.1f} pts" if cost >= 0.05 else "0 pts"
-            out.append(
-                f'<div style="{cm.CARD};font-size:12px;{"opacity:.6" if n < 8 else ""}">'
-                f'<div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline">'
-                f'<b style="font-size:13px">{lead}</b><span style="opacity:.75">{cost_txt}</span></div>'
-                f'{cm.split_bar(1 - pr)}{form}'
-                f'<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:3px">'
-                f'{chip}<span style="opacity:.65">{n} plays</span></div></div>')
-    legend = ('<div style="display:flex;gap:14px;font-size:12px;margin:2px 0 8px">' + "".join(
-        f'<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{c};'
-        f'margin-right:4px"></span>{n}</span>' for n, c in (("Run", cm.RUN_C), ("Pass", cm.PASS_C))) + "</div>")
-    return (f'<div style="max-width:980px">{legend}<div style="display:grid;grid-template-columns:40px '
-            f'repeat(4,minmax(0,1fr));gap:6px">{"".join(out)}</div></div>')
-
-
-def history_html(caller: str, by_formation: bool, seasons: list[int]) -> str:
-    """'2024: 66/34 Average → 2025: 61/39 Coin Flip → …' for every listed season he called plays (full seasons)."""
-    items = []
-    for s in seasons:
-        try:
-            t, _, _, _ = balance(s, None, "caller", by_formation)
-        except Exception:
-            continue
-        row = t[t["Play caller"] == caller]
-        if len(row):
-            r = row.sort_values("Snaps").iloc[-1]
-            items.append(f'<span><b>{s}</b> {up.split_text(r["Typical split"])} '
-                         f'<span style="color:{BALANCE_COLORS[r["Balance tier"]]};font-weight:600">{r["Balance tier"]}</span>'
-                         f' <span style="opacity:.6">({r["Team"]})</span></span>')
-    if len(items) < 2:
-        return ""
-    return ('<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px">'
-            '<span style="opacity:.7">Season by season:</span>' + ' <span style="opacity:.4">→</span> '.join(items) + "</div>")
-
-
-def callout_cards(both: pd.DataFrame) -> str:
-    """Coaches where balance and the film index disagree."""
-    a = both[both["Balance tier"].isin(["Coin Flip", "Balanced"]) & both["Tier"].isin(["Open Book", "Readable"])]
-    b = both[both["Balance tier"].isin(["Leans", "Lopsided"]) & both["Tier"].isin(["Mixes It Up", "Poker Face"])]
-    cards = []
-    for _, r in a.sort_values("Unpredictability index").iterrows():
-        cards.append((r, "Balanced, but readable",
-                      f"His typical down is a {up.split_text(r['Typical split'])} call, yet his film gives away "
-                      f"{r['Plays given away']:.1f} plays a game: his lean and his looks tell you what down & distance "
-                      "doesn't."))
-    for _, r in b.sort_values("Unpredictability index", ascending=False).iterrows():
-        cards.append((r, "Lopsided, but hard to read",
-                      f"His typical down is a {up.split_text(r['Typical split'])} call, yet his film doesn't help a "
-                      "defense: his habits by down change from game to game, so last month's tendencies don't hold."))
-    if not cards:
-        return ""
-    html = "".join(f'<div class="gl-tell"><div class="gl-head" style="gap:10px">{badge_html(r, 34)}<div>'
-                   f'<div class="gl-look">{kind}</div><div style="font-weight:700;font-size:17px">{r["Play caller"]}</div>'
-                   f'</div></div><div class="gl-cmp" style="font-size:14px;opacity:.85">{text}</div></div>'
-                   for r, kind, text in cards)
-    return GLANCE_CSS + f'<div class="gl-tells">{html}</div>'
-
-
-def balance_chart(d: pd.DataFrame) -> alt.LayerChart:
-    """Balance score per play caller, team colors, logo at the end of each bar; dashed line = average caller."""
-    order = list(d.sort_values("Balance score", ascending=False)["label"])
-    lo = float(min(d["Balance score"].min() - 3, 75))
-    tip = [alt.Tooltip("Play caller:N"), alt.Tooltip("Team name:N", title="Team"),
-           alt.Tooltip("Balance score:Q", format=".1f"), "Typical call:N", "Balance tier:N",
-           alt.Tooltip("Raw balance score:Q", format=".1f", title="Without the small-sample correction"),
-           "Most lopsided:N", "Most balanced:N", alt.Tooltip("Snaps:Q", format=",")]
-    base = alt.Chart(d.assign(base=lo)).encode(
-        x=alt.X("label:N", sort=order, title=None, axis=alt.Axis(labelAngle=-50, labelFontSize=10, labelLimit=120,
-                                                                labelOverlap=False)), tooltip=tip)
-    y = alt.Y("Balance score:Q", title="Balance score (100 = 50/50 in every decision down)",
-              scale=alt.Scale(domain=[lo, 100]))
-    bars = base.mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-        y=y, y2="base:Q", color=alt.Color("color:N", scale=None), opacity=alt.Opacity("opacity:Q", scale=None))
-    logos = base.mark_image(width=LOGO, height=LOGO, baseline="bottom").encode(
-        y="Balance score:Q", url="logo:N", opacity=alt.Opacity("opacity:Q", scale=None))
-    mean = alt.Chart(pd.DataFrame({"v": [d["Balance score"].mean()]})).mark_rule(
-        color="#888780", strokeDash=[4, 4]).encode(y="v:Q")
-    return alt.layer(bars, mean, logos).properties(height=380)
-
-
-def cost_heatmap(cells: pd.DataFrame, d: pd.DataFrame) -> alt.LayerChart:
-    """Each coach x decision down, colored by the points it costs his balance (text = pass rate)."""
-    c = cells.merge(d[["Team", "Play caller", "label"]], left_on=["posteam", "caller"], right_on=["Team", "Play caller"])
-    c = (c.assign(passes=c["Pass rate"] * c["Snaps"]).groupby(["label", "Play caller", "dd"])
-         .agg(passes=("passes", "sum"), Snaps=("Snaps", "sum"), Cost=("Cost", "sum")).reset_index())
-    c["Pass rate"] = c["passes"] / c["Snaps"]
-    order = list(d.sort_values("Balance score", ascending=False)["label"])
-    x = alt.X("dd:N", sort=up.BALANCE_CELLS, title=None,
-              axis=alt.Axis(orient="top", labelAngle=-35, labelOverlap=False, labelLimit=140))
-    y = alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False))
-    tip = ["Play caller", alt.Tooltip("dd:N", title="Down & distance"), alt.Tooltip("Pass rate:Q", format=".0%"),
-           "Snaps", alt.Tooltip("Cost:Q", format=".1f", title="Points lost")]
-    hi = float(max(c["Cost"].quantile(0.97), 1))
-    rect = alt.Chart(c).mark_rect().encode(
-        x=x, y=y, tooltip=tip,
-        color=alt.Color("Cost:Q", title="Points lost", scale=alt.Scale(scheme="oranges", domain=[0, hi], clamp=True)))
-    text = alt.Chart(c).mark_text(fontSize=9).encode(
-        x=x, y=y, text=alt.Text("Pass rate:Q", format=".0%"),
-        color=alt.condition(f"datum.Cost > {hi * 0.6}", alt.value("white"), alt.value(cm.theme_ink())))
-    return alt.layer(rect, text).properties(height=19 * len(order) + 10)
-
-
-def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snaps: int, highlight: list[str],
-                   by_formation: bool, listed_seasons: list[int]):
-    st.title("How balanced is he?")
-    st.markdown("On every decision down (all 1st and 2nd downs, 3rd & short and medium, 4th & short), how close is "
-                "he to a 50/50 run/pass call? We sum it up as his **typical call**: 60/40 is hard to call, 75/25 is "
-                "easy." + (" **Split by shotgun / under center is on:** each down is scored separately from each "
-                           "formation." if by_formation else ""))
-    with st.expander("How this is measured"):
-        st.markdown(BALANCE_DEFINITIONS)
-    try:
-        t, cells, rel, league_third = balance(season, weeks, by, by_formation)
-    except Exception as e:
-        st.error(f"Couldn't load nflfastR data: {e}")
-        st.stop()
-    if t.empty:
-        st.info("No snaps match these filters.")
-        st.stop()
-    d = with_team(t.assign(Edge=np.nan, **{"Lean edge": np.nan, "Look edge": np.nan, "Film accuracy": np.nan,
-                                           "Generic accuracy": np.nan}), info, highlight, by)
-    d = d[d["Snaps"] >= min_snaps]
-    if d.empty:
-        st.info("No play callers with that many snaps. Lower the minimum.")
-        st.stop()
-    d["Typical call"] = d["Typical split"].map(up.split_text)
-    if pd.isna(rel) or rel < 0.3:
-        st.warning("It's early: there aren't enough snaps yet to tell most coaches apart (their scores in odd and even "
-                   "games barely agree). Treat these tiers as a first look.")
-
-    st.html(balance_anchors_html(d))
-    st.subheader("Every play caller, by tier")
-    st.html(balance_board_html(d))
-    st.caption("The number next to each name is his typical call: the run/pass split of his typical decision down.")
-
-    st.subheader("Where each coach loses balance")
-    st.altair_chart(points_lost_chart(cells, d), width="stretch")
-    st.caption("The longer the bar, the easier he is to call by down & distance. Each piece is one down & distance; "
-               "hover for his pass rate there. Most balanced at the top.")
-
-    st.subheader("3rd & medium: one down or two?")
-    tm = up.third_medium(cells).merge(d[["Team", "Play caller", "label"]], left_on=["posteam", "caller"],
-                                      right_on=["Team", "Play caller"])
-    tm = tm[tm["Snaps"] >= 8]
-    if len(tm):
-        st.altair_chart(third_medium_chart(tm, league_third), width="stretch")
-        st.caption(f"Dashed line = the league ({league_third:.0%} pass on 3rd & 4-6). Orange = {up.THIRD_MEDIUM_GAP:.0%} "
-                   "or more below it: he runs often enough on 3rd & medium that he's playing it as the first of two "
-                   "downs, ready to go for it on 4th. Coaches with 8+ snaps there.")
-
-    st.subheader("Balanced isn't the same as hard to read")
-    try:
-        f = with_team(up.caller_table(*scored(season, weeks, by)), info, highlight, by)
-        f["Tier"] = f["Unpredictability index"].map(lambda v: up.tier(v) if pd.notna(v) else None)
-        both = f.merge(d[["Team", "Play caller", "Balance score", "Typical split", "Balance tier"]],
-                       on=["Team", "Play caller"])
-        both = both[both["Unpredictability index"].notna()]
-    except Exception:
-        both = pd.DataFrame()
-    if len(both) >= 5:
-        cards = callout_cards(both)
-        if cards:
-            st.html(cards)
-        r = both["Balance score"].corr(both["Unpredictability index"])
-        st.altair_chart(logo_scatter(both, "Balance score", "Unpredictability index", "More balanced by down & distance →",
-                                     "Harder to read on film (unpredictability index) →", ".0f", ".0f",
-                                     ref=(float(both["Balance score"].mean()), 50.0)), width="stretch")
-        st.caption(f"r = {r:+.2f}: the two barely agree. Bottom right = balanced by down, yet readable (his lean, "
-                   "formation, or personnel gives it away). Top left = lopsided by down, yet hard to read (his habits "
-                   "don't hold from one game to the next).")
-    else:
-        st.caption("Not enough film yet to compare with the film index.")
-
-    st.subheader("Scouting card")
-    order = d.sort_values("Balance score", ascending=False)
-    labels = {f"{r['Play caller']} ({r['Team']}) · {r['Typical call']} · {r['Balance tier']}": i
-              for i, r in order.iterrows()}
-    pick = st.selectbox("Play caller", list(labels), key=f"up_bal_pick_{season}",
-                        help="Sorted from most balanced to most lopsided.")
-    r = d.loc[labels[pick]]
-    mine = cells[(cells["posteam"] == r["Team"]) & (cells["caller"] == r["Play caller"])]
-    color = BALANCE_COLORS[r["Balance tier"]]
-    st.html(GLANCE_CSS + f'<div class="gl-card"><div class="gl-head">{badge_html(r, 56)}<div style="min-width:0">'
-            f'<div class="gl-nm" style="font-size:30px">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · '
-            f'{season} · {int(r["Snaps"])} decision-down snaps</div></div>'
-            f'<span class="gl-pill" style="background:{color}">{r["Balance tier"]}</span></div>'
-            f'<p class="gl-verdict">{up.balance_verdict(r, mine, league_third)}</p>'
-            f'<div class="gl-stat"><span class="gl-n" style="color:{color}">{r["Typical call"]}</span>'
-            f'<span>his typical decision down. The average coach: '
-            f'{up.split_text(up.typical_split(d["Balance score"].mean()))}.</span></div>'
-            f'{history_html(r["Play caller"], by_formation, listed_seasons) if by == "caller" else ""}</div>')
-    st.markdown(f"**{r['Play caller']}'s decision downs**")
-    st.html(dd_grid_html(mine, by_formation))
-    st.caption("Same grid as the Tendencies tab: the bar is his run/pass split, the chip is PROE (how much more or less "
-               "he throws than an average team in the same spots, shown at ±5% or more), and the top right is how many "
-               "points that down takes off his balance. Faded = under 8 plays." +
-               (" Gun / UC = his pass rate from shotgun and from under center." if by_formation else ""))
-
-    with st.expander("Show the math"):
-        st.markdown(f"**Balance score, {season}**")
-        st.altair_chart(balance_chart(d), width="stretch")
-        st.markdown("**Points lost on every decision down** (text = pass rate)")
-        st.altair_chart(cost_heatmap(cells, d), width="stretch")
-        show = pd.DataFrame({"Logo": d["logo"], "Play caller": d["Play caller"], "Team": d["Team"],
-                             "Typical call": d["Typical call"], "Tier": d["Balance tier"],
-                             "Balance score": d["Balance score"], "Raw balance score": d["Raw balance score"],
-                             "Pass rate": d["Pass rate"], "Most lopsided": d["Most lopsided"],
-                             "Most balanced": d["Most balanced"], "Snaps": d["Snaps"]})
-        st.dataframe(show.style.format({"Balance score": "{:.1f}", "Raw balance score": "{:.1f}",
-                                        "Pass rate": "{:.0%}", "Snaps": "{:,}"})
-                     .apply(shade_index_balance, subset=["Balance score"]),
-                     width="stretch", hide_index=True, height=36 * (len(show) + 1) + 2,
-                     column_config={"Logo": st.column_config.ImageColumn("", width="small"),
-                                    "Raw balance score": st.column_config.Column(
-                                        help="The same score without taking out small-sample chance."),
-                                    "Most lopsided": st.column_config.Column(
-                                        help="The down & distance (8+ snaps) that costs him the most points."),
-                                    "Pass rate": st.column_config.Column(help="Pass rate on decision downs."),
-                                    "Snaps": st.column_config.Column(help="Decision-down snaps.")})
-        st.caption("Reliability (odd vs even games): " + ("–" if pd.isna(rel) else f"{rel:.2f}") +
-                   ". 1 = all real differences between coaches, 0 = all noise.")
-
-
-def shade_index_balance(col):
-    """Orange below the average caller, purple above, stronger the farther from it."""
-    mu, sd = col.mean(), col.std() or 1
-    out = []
-    for v in col:
-        z = (v - mu) / sd
-        a = min(abs(z) / 2, 1)
-        rgb = "83,74,183" if z > 0 else "216,90,48"
-        out.append(f"background-color:rgba({rgb},{a * 0.45:.2f})" if a >= 0.15 else "")
-    return out
-
-
 # ---- At a glance view -----------------------------------------------------------------------------------------
 TIER_COLORS = {"Open Book": "#C8321E", "Readable": "#D9822B", "Average": "#8A949A", "Mixes It Up": "#2F8C86",
                "Poker Face": "#3B5EA8"}
-GLANCE_CSS = """<style>
-.gl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.gl-anchor{border:1px solid rgba(128,128,128,.3);border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:center}
-.gl-lbl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
-.gl-nm{font-size:24px;font-weight:700;line-height:1.15}
-.gl-sub{opacity:.7;font-size:14px}
-.gl-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
-@media (max-width:900px){.gl-board{grid-template-columns:1fr 1fr}}
-@media (max-width:500px){.gl-board{grid-template-columns:1fr}}
-.gl-col{background:rgba(128,128,128,.07);border-radius:10px;padding:12px;border-top:6px solid;min-width:0}
-.gl-col h4{margin:0 0 2px;font-size:18px;text-transform:uppercase;letter-spacing:.03em;padding:0}
-.gl-def{font-size:13px;opacity:.7;line-height:1.35;margin-bottom:8px}
-.gl-chip{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:14px}
-.gl-chip .q{margin-left:auto;opacity:.6;font-family:monospace}
-.gl-badge{flex:none;display:inline-grid;place-items:center;border-radius:50%;font-weight:700;border:2px solid}
-.gl-card{border:1px solid rgba(128,128,128,.3);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:18px}
-.gl-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.gl-pill{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 12px;border-radius:999px;color:#fff}
-.gl-sure{font-size:12px;opacity:.75;border:1px solid rgba(128,128,128,.4);border-radius:999px;padding:2px 10px}
-.gl-verdict{font-size:19px;line-height:1.5;max-width:62ch;margin:0}
-.gl-stat{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.gl-n{font-size:56px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
-.gl-tells{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.gl-tell{border:1px solid rgba(128,128,128,.3);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
-.gl-look{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
-.gl-big{font-size:30px;font-weight:800;line-height:1}
-.gl-big small{font-size:16px;margin-left:4px}
-.gl-bar{position:relative;height:10px;background:rgba(128,128,128,.18);border-radius:5px}
-.gl-bar i{position:absolute;top:0;bottom:0;left:0;border-radius:5px}
-.gl-bar u{position:absolute;top:-4px;bottom:-4px;width:3px;background:currentColor;border-radius:2px}
-.gl-cmp{font-size:13px;opacity:.75}
-.gl-h{font-size:18px;font-weight:700;margin:0}
-</style>"""
-
-
-def badge_html(r: pd.Series, size: int = 26) -> str:
-    """The team logo, or a badge in team colors when the logo couldn't be downloaded."""
-    if r.get("logo"):
-        return f'<img src="{r["logo"]}" width="{size}" height="{size}" alt="{r["Team"]}" style="flex:none">'
-    fg = "#16212B" if _luminance(r["color"]) > 0.5 else "#FFFFFF"
-    return (f'<span class="gl-badge" style="width:{size}px;height:{size}px;font-size:{max(9, size // 3)}px;'
-            f'background:{r["color"]};color:{fg};border-color:{r["color"]}">{r["Team"]}</span>')
-
-
 def anchors_html(g: pd.DataFrame) -> str:
     def one(r, label):
         why = (f"film gives away ~{r['Plays given away']:.1f} plays a game" if r["Plays given away"] > 0
                else "his film misleads a defense")
-        return (f'<div class="gl-anchor">{badge_html(r, 52)}<div style="min-width:0">'
+        return (f'<div class="gl-anchor">{ui.badge_html(r, 52)}<div style="min-width:0">'
                 f'<div class="gl-lbl" style="color:{TIER_COLORS[r["Tier"]]}">{label}</div>'
                 f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · {why}</div></div></div>')
     s = g.sort_values("Unpredictability index")
-    return GLANCE_CSS + f'<div class="gl-row">{one(s.iloc[0], "Easiest to read")}{one(s.iloc[-1], "Hardest to read")}</div>'
+    return ui.GLANCE_CSS + f'<div class="gl-row">{one(s.iloc[0], "Easiest to read")}{one(s.iloc[-1], "Hardest to read")}</div>'
 
 
 def board_html(g: pd.DataFrame) -> str:
@@ -747,12 +237,12 @@ def board_html(g: pd.DataFrame) -> str:
     for _, name in up.TIERS:
         color = TIER_COLORS[name]
         rows = g[g["Tier"] == name].sort_values("Unpredictability index")
-        chips = "".join(f'<div class="gl-chip">{badge_html(r)}<span>{r["Play caller"]}</span>'
+        chips = "".join(f'<div class="gl-chip">{ui.badge_html(r)}<span>{r["Play caller"]}</span>'
                         f'{"<span class=q title=&quot;Too close to call&quot;>~</span>" if r["Sure"] == "Too close to call" else ""}'
                         f'</div>' for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
         cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
                     f'<div class="gl-def">{up.TIER_HELP[name]}</div>{chips}</div>')
-    return GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
+    return ui.GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
 
 
 def four_box(g: pd.DataFrame) -> alt.LayerChart:
@@ -760,7 +250,7 @@ def four_box(g: pd.DataFrame) -> alt.LayerChart:
     x, y = "Lean part", "Look part"
     pad_x, pad_y = (g[x].max() - g[x].min()) * 0.08 or 0.01, (g[y].max() - g[y].min()) * 0.08 or 0.01
     x0, x1, y0, y1 = g[x].min() - pad_x, g[x].max() + pad_x, g[y].min() - pad_y, g[y].max() + pad_y
-    chart = logo_scatter(g, x, y, "His overall pass/run lean gives it away →", "His looks give it away →", ".1f", ".1f",
+    chart = ui.logo_scatter(g, x, y, "His overall pass/run lean gives it away →", "His looks give it away →", ".1f", ".1f",
                          ref=(float(g[x].mean()), float(g[y].mean())))
     corners = pd.DataFrame({"x": [x1, x0, x1, x0], "y": [y1, y1, y0, y0], "align": ["right", "left", "right", "left"],
                             "base": ["top", "top", "bottom", "bottom"],
@@ -778,7 +268,7 @@ def card_html(r: pd.Series, tl: list[dict], ml: list[dict], avg_given: float, se
     g = r["Plays given away"]
     stat = ("plays a game his film gives away to a defense that studied it." if g > 0 else
             "plays a game: studying his film makes a defense's guesses slightly worse.")
-    head = (f'<div class="gl-head">{badge_html(r, 56)}<div style="min-width:0"><div class="gl-nm" style="font-size:30px">'
+    head = (f'<div class="gl-head">{ui.badge_html(r, 56)}<div style="min-width:0"><div class="gl-nm" style="font-size:30px">'
             f'{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · {season} · weeks {r["Weeks"]}</div></div>'
             f'<span class="gl-pill" style="background:{color}">{r["Tier"]}</span>'
             f'<span class="gl-sure">{"Clear result" if r["Sure"] == "Clear" else r["Sure"]}</span></div>')
@@ -804,10 +294,11 @@ def card_html(r: pd.Series, tl: list[dict], ml: list[dict], avg_given: float, se
             f'<span class="gl-cmp">The next games: <b>pass {m["actual"]:.0%}</b> · {m["snaps"]} plays</span></div>'
             for m in ml)
         body += f'<div><p class="gl-h">Where his film fools you</p></div><div class="gl-tells">{cards}</div>'
-    return GLANCE_CSS + f'<div class="gl-card">{head}{body}</div>'
+    return ui.GLANCE_CSS + f'<div class="gl-card">{head}{body}</div>'
 
 
-def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int, rel: float) -> None:
+def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int, rel: float,
+                  highlight: list[str]) -> None:
     g = ranked.copy()
     g["Tier"] = g["Unpredictability index"].map(up.tier)
     g["Sure"] = up.certainty(g)
@@ -826,6 +317,13 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
                 "play the odds. **Up:** his formations, personnel, motion, or the down tell you what's coming.")
     st.altair_chart(four_box(g), width="stretch")
     st.caption("Dashed lines = the average play caller. Hover a logo for his tier.")
+
+    st.subheader("Does being hard to read pay off?")
+    st.markdown("Offensive EPA per play against the unpredictability index: do harder-to-read play callers run better "
+                "offenses?")
+    ui.epa_trend_section(g, ui.film_seasons, "Unpredictability index", "Harder to read on film (unpredictability index) →",
+                            ".0f", more="harder to read", per=10, unit="index points", info=info, highlight=highlight,
+                            season=season, key="up_epa_glance")
 
     st.subheader("Scouting card")
     order = g.sort_values("Unpredictability index")
@@ -856,18 +354,16 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
 
 # ---- Page ----------------------------------------------------------------------------------------------------
 seasons = dt.available_seasons()
-info = team_info()
+info = ui.team_info()
 callers_csv = up.load_callers()
 with st.sidebar:
     st.header("Unpredictability Index")
-    view = st.segmented_control("View", ["At a glance", "Show the math", "Balance score"], default="At a glance",
-                                key="up_view",
+    view = st.segmented_control("View", ["At a glance", "Show the math"], default="At a glance", key="up_view",
                                 help="At a glance: tiers, what gives each coach away, and a scouting card, in plain "
-                                     "words. Show the math: every number behind them. Balance score: how close to "
-                                     "50/50 he calls each down & distance.") or "At a glance"
+                                     "words. Show the math: every number behind them.") or "At a glance"
     st.session_state.setdefault("up_season", seasons[-1])
     season = st.selectbox("Season", seasons[::-1], key="up_season")
-    season_plays = plays(season)
+    season_plays = ui.plays(season)
     reg_weeks = season_plays.loc[season_plays["season_type"] == "REG", "Week"]
     if reg_weeks.empty:
         st.info("No regular-season plays for this season yet.")
@@ -880,21 +376,12 @@ with st.sidebar:
                                     help="Play callers: a mid-season change of play caller starts a new film study. "
                                          "Teams: one film study per team for the whole range.")
     by = "team" if by_label == "Teams" else "caller"
-    min_snaps = st.slider("Minimum scored snaps to show" if view != "Balance score" else "Minimum snaps to show",
-                          0, 600, up.MIN_SNAPS, 25, key="up_min",
+    min_snaps = st.slider("Minimum scored snaps to show", 0, 600, up.MIN_SNAPS, 25, key="up_min",
                           help=f"Index needs {up.MIN_SNAPS}+; lower shows short stints without an index.")
     highlight = st.multiselect("Highlight teams", sorted(season_plays["posteam"].dropna().unique()), key="up_hl",
                                help="Fades every other team in the charts.")
-    by_formation = view == "Balance score" and st.toggle(
-        "Split by shotgun / under center", False, key="up_bal_form",
-        help="Score each down & distance separately from shotgun and from under center, closer to what a defense "
-             "sees before the snap.")
 
 week_range = None if weeks == (1, max_week) else weeks
-if view == "Balance score":
-    render_balance(season, week_range, by, min_snaps, highlight, by_formation,
-                   sorted(s for s in callers_csv["season"].unique() if s in seasons))
-    st.stop()
 
 if view == "At a glance":
     st.title("Can you read his calls?")
@@ -908,7 +395,7 @@ else:
     with st.expander("How this is measured"):
         st.markdown(DEFINITIONS)
 try:
-    d_snaps, clues = scored(season, week_range, by)
+    d_snaps, clues = ui.scored(season, week_range, by)
 except Exception as e:
     st.error(f"Couldn't load nflfastR data: {e}")
     st.stop()
@@ -925,12 +412,12 @@ if "personnel" not in clues and view != "At a glance":
             "clue. Motion and backfield count are." if {"motion", "backfield"} & set(clues) else
             "No personnel charting for this season, so personnel isn't a clue.")
 
-d_all = with_team(t, info, highlight, by)
+d_all = ui.with_team(t, info, highlight, by)
 d = d_all[d_all["Scored snaps"] >= min_snaps]
 ranked = d[d["Unpredictability index"].notna()]
 rel = up.reliability(d_snaps)
 if view == "At a glance":
-    render_glance(ranked, d_snaps, clues, season, rel)
+    render_glance(ranked, d_snaps, clues, season, rel, highlight)
     st.stop()
 
 counts = ranked["Profile"].value_counts()
@@ -974,7 +461,7 @@ st.caption("What each clue adds to his lean, bits per 100 snaps (a film scout th
            "clue misleads. Most readable callers at the top.")
 
 st.markdown("**Readable from his lean, or from his habits?**")
-st.altair_chart(logo_scatter(ranked, "Lean part", "Look part", "From his overall lean (bits / 100 snaps) →",
+st.altair_chart(ui.logo_scatter(ranked, "Lean part", "Look part", "From his overall lean (bits / 100 snaps) →",
                              "From his situations & looks (bits / 100 snaps) →", "+.1f", "+.1f", ref=(0.0, 0.0)),
                 width="stretch")
 st.caption("Right = his overall pass/run lean gives him away (he's clearly pass- or run-heavy and stays that way). Up = "
@@ -982,12 +469,10 @@ st.caption("Right = his overall pass/run lean gives him away (he's clearly pass-
            "dashed lines = his film on that misleads: the lean or the habits changed from game to game. Lean is most of "
            "the gap between callers; habits are smaller and noisier.")
 
-st.markdown("**Offensive EPA per play vs unpredictability**")
-r = ranked["Unpredictability index"].corr(ranked["EPA/play"])
-st.altair_chart(logo_scatter(ranked, "Unpredictability index", "EPA/play", "Unpredictability index →",
-                             "Offensive EPA per play →", ".0f", "+.2f", trend=True, ref=(50.0, None)), width="stretch")
-st.caption(f"Does being hard to read pay off? Correlation across these play callers: r = {r:+.2f} (dashed line = "
-           "least-squares fit). EPA per play is over the same snaps the index uses.")
+st.markdown("**Does being hard to read pay off?** Offensive EPA per play against the unpredictability index.")
+ui.epa_trend_section(ranked, ui.film_seasons, "Unpredictability index", "Harder to read on film (unpredictability index) →",
+                         ".0f", more="harder to read", per=10, unit="index points", info=info, highlight=highlight,
+                         season=season, key="up_epa_math")
 
 # ---- Why ------------------------------------------------------------------------------------------------------
 st.subheader("Why a play caller is readable or hard to read")
@@ -1040,11 +525,11 @@ if by == "caller" and len(listed) > 1:
     st.subheader("Play callers across seasons")
     frames = []
     for s in listed:
-        ds, cl = scored(s, None, "caller")
+        ds, cl = ui.scored(s, None, "caller")
         ts = up.caller_table(ds, cl).assign(Season=s)
         frames.append(ts[ts["Unpredictability index"].notna()])
     h = pd.concat(frames, ignore_index=True)
-    h = with_team(h, info, highlight, "caller")
+    h = ui.with_team(h, info, highlight, "caller")
     repeat = h["Play caller"].map(h["Play caller"].value_counts()) > 1
     st.altair_chart(history_chart(h[repeat]), width="stretch")
     st.caption(f"Full regular seasons {listed[0]}-{listed[-1]} (the season in progress so far), play callers with "
