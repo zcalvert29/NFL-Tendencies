@@ -226,7 +226,8 @@ and what goes into the index.
 
 - **Lean (PROE):** pass rate over expected. nflfastR's `xpass` gives the chance an average team throws on each snap;
   it was fit on earlier seasons and drifts (today's NFL runs more on 3rd/4th & 1-2 than it expects), so it's
-  re-centered on what the rest of the league actually did in the same spots.
+  re-centered on what the rest of the league actually did in the same spots. Before 2006 (no `xpass`), the expected
+  rate is the rest of the league's pass rate in the same down, distance, field zone, and score.
 - **Shotgun over expected:** shotgun rate minus the rest of the league's in the same down, distance, field zone, and
   score state.
 - **3+ WR over expected:** 3+ WR personnel rate minus the rest of the league's in the same spots. Needs FTN charting,
@@ -328,8 +329,12 @@ t = t[t["Unorthodoxy index"].notna()]
 
 measures = t.attrs["measures"]
 if not has_personnel:
-    st.info("No personnel charting for this season yet (nflverse publishes it after the season), so the personnel "
-            "measure and columns are left out.")
+    st.info("No personnel charting for this season (nflverse's participation charting starts in 2016 and is "
+            "published after each season), so the personnel measure and columns are left out.")
+if not cm.has_xpass(season_plays[season_plays["season_type"] == "REG"]):
+    st.info("nflfastR's expected pass rate starts in 2006, so for this season lean (PROE) compares each snap with the "
+            "rest of the league's pass rate in the same down, distance, field zone, and score, like shotgun over "
+            "expected. Raw nflfastR PROE isn't available.")
 d_all = team_frame(t, info, highlight)
 shown = d_all["Team"].map(info.get("team_division", {})).isin(sel_div) & d_all["Profile"].isin(profiles or PROFILES)
 d = d_all[shown]

@@ -71,6 +71,15 @@ def test_crosstab_nfl_columns_use_same_rows():
     assert t.loc[3, "Plays"] == 2
 
 
+def test_crosstab_drops_proe_before_2006():
+    # nflfastR has no xpass / pass_oe before 2006: those columns are left out instead of shown blank.
+    old = frame([{"DN": 3, "PASS": 1, "pass_oe": np.nan, "xpass": np.nan}, {"DN": 1, "PASS": 0, "pass_oe": np.nan,
+                                                                          "xpass": np.nan}])
+    t = cm.crosstab(old, "DN", ["Pass Rate", "NFL Pass Rate", "Exp. Pass Rate", "PROE", "Plays"], old)
+    assert list(t.columns) == ["Pass Rate", "NFL Pass Rate", "Plays"]
+    assert not cm.has_xpass(old)
+
+
 def test_style_compares_to_nfl_and_skips_tiny_rows():
     t = pd.DataFrame({"EPA per Play": [0.30, -0.05, 0.50], "NFL EPA per Play": [0.0, 0.10, 0.0],
                       "Plays": [50, 50, 2]}, index=["a", "b", "c"])

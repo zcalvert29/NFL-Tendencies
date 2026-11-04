@@ -37,14 +37,17 @@ def _name(dn: int, dist: str) -> str:
 
 
 def _hover(r) -> str:
+    expected = "" if pd.isna(r.xpass) else f" · expected for an average team {r.xpass:.0%}"
+    proe = "" if pd.isna(r.proe) else f"\nPROE {cm.pct_points(r.proe)}"
     return (f"{_name(r.DN, r.Distance)} ({r.Distance.split('(')[1].rstrip(')')}): {r.n} plays\n"
-            f"Pass {r.pass_rate:.0%} · expected for an average team {r.xpass:.0%} · NFL actual {r.nfl:.0%}\n"
-            f"PROE {cm.pct_points(r.proe)}" + (f"\nMost used: {r.look}" if r.look else ""))
+            f"Pass {r.pass_rate:.0%}{expected} · NFL actual {r.nfl:.0%}{proe}" + (f"\nMost used: {r.look}" if r.look else ""))
 
 
 def callouts_html(cells: pd.DataFrame) -> str:
     """A scouting-report sentence for each box that clearly differs from an average team (enough plays, |PROE| at
     least CHIP_MIN_PROE), biggest first."""
+    if cells["proe"].isna().all():
+        return f'<div style="{cm.CARD};font-size:14px">{cm.XPASS_NOTE} The grid shows their pass rates.</div>'
     notable = cells[(cells["n"] >= cm.TELL_MIN_N) & (cells["proe"].abs() >= cm.CHIP_MIN_PROE)]
     notable = notable.reindex(notable["proe"].abs().sort_values(ascending=False).index).head(6)
     if notable.empty:
@@ -229,11 +232,13 @@ def render_down_calls(team_d, team, down):
 
 def render(team_d: pd.DataFrame, league_d: pd.DataFrame, team: str) -> None:
     render_dd_grid(team_d, league_d, team)
-    c1, c2 = st.columns(2)
-    with c1:
-        proe_chart(proe_frame(team_d, league_d, dd_groups(team_d)), f"{team} pass rate over expected by down & distance")
-    with c2:
-        proe_chart(proe_frame(team_d, league_d, SITUATIONS), f"{team} pass rate over expected by game situation")
+    if cm.has_xpass(team_d):
+        c1, c2 = st.columns(2)
+        with c1:
+            proe_chart(proe_frame(team_d, league_d, dd_groups(team_d)),
+                       f"{team} pass rate over expected by down & distance")
+        with c2:
+            proe_chart(proe_frame(team_d, league_d, SITUATIONS), f"{team} pass rate over expected by game situation")
     render_tables(team_d, league_d, team)
     render_down_table(team_d, league_d, team, 3)
     render_down_table(team_d, league_d, team, 4)

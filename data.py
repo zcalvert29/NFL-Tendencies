@@ -29,7 +29,9 @@ FTN_URL = RELEASES + "/ftn_charting/ftn_charting_{season}.parquet"
 FTN_FIRST_SEASON = 2022      # FTN's charting (motion, play action, RPO, backfield) starts here, in season included
 
 DATA_DIR = Path(__file__).parent / "data"
-FIRST_SEASON = 2016          # participation charting starts here
+FIRST_SEASON = 1999          # nflfastR play-by-play starts here
+PARTICIPATION_FIRST_SEASON = 2016   # personnel, formation, box count, coverage
+XPASS_FIRST_SEASON = 2006    # xpass / PROE, air yards, and pass direction start here
 REFRESH_HOURS = 12
 
 PBP_COLUMNS = [
@@ -89,12 +91,13 @@ def fetch_season(season: int, force: bool = False) -> Path:
             return path
         raise
     pbp = pbp[[c for c in PBP_COLUMNS if c in pbp.columns]]
-    try:
-        part = pd.read_parquet(io.BytesIO(_download(PARTICIPATION_URL.format(season=season))))
-        part = part.rename(columns={"nflverse_game_id": "game_id"})[["game_id", "play_id"] + PARTICIPATION_COLUMNS]
-        pbp = pbp.merge(part.drop_duplicates(["game_id", "play_id"]), on=["game_id", "play_id"], how="left")
-    except (urllib.error.URLError, OSError, KeyError, ValueError):
-        pass   # not published yet
+    if season >= PARTICIPATION_FIRST_SEASON:
+        try:
+            part = pd.read_parquet(io.BytesIO(_download(PARTICIPATION_URL.format(season=season))))
+            part = part.rename(columns={"nflverse_game_id": "game_id"})[["game_id", "play_id"] + PARTICIPATION_COLUMNS]
+            pbp = pbp.merge(part.drop_duplicates(["game_id", "play_id"]), on=["game_id", "play_id"], how="left")
+        except (urllib.error.URLError, OSError, KeyError, ValueError):
+            pass   # not published yet
     if season >= FTN_FIRST_SEASON:
         try:
             ftn = pd.read_parquet(io.BytesIO(_download(FTN_URL.format(season=season))))

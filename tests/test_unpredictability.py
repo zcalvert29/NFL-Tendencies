@@ -85,8 +85,13 @@ def test_play_caller_change_starts_new_film():
 
 def test_play_caller_list_is_complete():
     c = up.load_callers()
+    assert c["season"].min() == 1999
+    assert set(c["confidence"]) <= {"high", "medium", "low"}
     for season, g in c.groupby("season"):
-        assert g["team"].nunique() == 32, season
+        # 31 teams until Houston joined in 2002 (Cleveland returned in 1999).
+        assert g["team"].nunique() == (31 if season < 2002 else 32), season
+        if season < 2002:
+            assert "HOU" not in set(g["team"])
         for team, tg in g.groupby("team"):
             weeks = sorted(w for r in tg.itertuples() for w in range(r.first_week, r.last_week + 1))
             assert weeks == list(range(1, 23)), (season, team)

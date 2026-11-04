@@ -124,11 +124,26 @@ PASS_MEASURES = ["Plays", "Share", "Comp %", "NFL Comp %", "Success Rate", "NFL 
                  "NFL EPA per Play", "Explosive Rate"]
 
 
+def render_uncharted(passes: pd.DataFrame, lg_passes: pd.DataFrame, team: str) -> None:
+    """Before 2006: everything that doesn't need pass direction or air yards."""
+    cm.show_table(f"{team} dropbacks by formation", cm.crosstab(passes, "Formation", PASS_MEASURES, lg_passes,
+                                                                 sort_by_count=True))
+    tgt = passes[passes["receiver_player_name"].notna()].assign(Target=lambda d: d["receiver_player_name"])
+    cm.show_table(f"{team} targets", cm.crosstab(tgt, "Target", ["Plays", "Share", "Comp %", "Success Rate",
+                                                                 "EPA per Play", "Explosive Rate"],
+                                                 sort_by_count=True).head(10).rename(columns={"Plays": "Targets"}))
+    cm.show_plays(f"{team} best passes", passes.nlargest(8, "epa"))
+
+
 def render(team_d: pd.DataFrame, league_d: pd.DataFrame, team: str) -> None:
     passes, lg_passes = team_d[team_d["PASS"] == 1], league_d[league_d["PASS"] == 1]
     st.markdown(f"**{team} pass zones**")
     if passes.empty:
         st.info("No passes match the current filters.")
+        return
+    if not cm.has_pass_direction(passes):
+        st.info(cm.DIRECTION_NOTE)
+        render_uncharted(passes, lg_passes, team)
         return
     metric = st.radio("Shade by", list(ZONE_METRICS), horizontal=True, index=2, key="pz_metric")
     st.html(pass_zone_html(team_d, league_d, metric))
