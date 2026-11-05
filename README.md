@@ -21,7 +21,7 @@ Pick an offense in the sidebar. Five tabs:
 
 | Tab | What it shows |
 |---|---|
-| **Tendencies** | Down & distance: a scouting-report sentence for each box that clearly differs from an average team (10+ plays, PROE of 5%+ either way), then the full grid (pass %, run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); PROE charts by down & distance and by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); offensive, formation, and personnel tendency tables; 3rd and 4th downs with NFL conversion rates; every 3rd/4th down call; best 10 plays |
+| **Tendencies** | A **cheat sheet** of their 6 strongest tells across every look (down & distance, formation, personnel, motion, backfield, last call, red zone; 20+ plays each), ranked by how far their pass rate sits from the NFL's in the same look, with how often those plays worked; **lately**, their last 4 games against the whole selection in each split (PROE, or pass rate vs the NFL's before 2006), flagging a move of 8+ points on 15+ recent plays with a warning; then down & distance: a scouting-report sentence for each box that clearly differs from an average team (10+ plays, PROE of 5%+ either way), then the full grid (pass %, run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); PROE charts by down & distance and by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); offensive, formation, and personnel tendency tables; 3rd and 4th downs with NFL conversion rates; every 3rd/4th down call; best 10 plays |
 | **Sequencing** | What they call after a run, a pass, a completion, an incompletion, a big gain, a loss, a play that worked or didn't, and on a new set of downs, each with the NFL's pass rate after the same kind of snap and PROE; by down after a run or a pass |
 | **Red zone** | Trips, touchdown rate, scoring rate, points per trip, and trips per game against the NFL; how trips ended; how it's called in each zone inside the 20 with NFL pass rate, success, and EPA; formations and personnel inside the 20; run/pass by direction between the 11 and 20 and inside the 10 |
 | **Run game** | Run-lane diagram (EPA and carries for each of nflfastR's seven lanes, colored against the NFL's EPA in the same lane); runs by lane, formation, distance, personnel, and box count; ball carriers; best runs |
@@ -43,6 +43,9 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   are playing it as the first of two downs, ready to go for it on 4th.
 - **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
   call). **Tiers:** Coin Flip (62/38 or closer), Balanced, Average, Leans, Lopsided (beyond 71/29).
+- **How often would a defense guess right?** If a defense always guessed his most common call in each down &
+  distance, the share of decision downs it would get right (Johnson 57% in 2025, Kingsbury 69%, the league's own
+  most common call 61%). Shown next to each name on the tier board and as a dot chart against the league line.
 - **On the page:** the two ends of the scale; a tier board; **where each coach loses balance** (points lost per down &
   distance, adding up to 100 minus his score); **3rd & medium: one down or two?** (pass rate there against the league;
   8+ points below = a two-down set); **balanced isn't the same as hard to read** (callouts where balance and the film
@@ -115,7 +118,8 @@ The same film index in plain words, for anyone who watches football. Pick **View
 **At a glance** and **Show the math** (every number and chart described above).
 
 - **Tiers** instead of scores: *Open Book* (index 40 or less), *Readable*, *Average*, *Mixes It Up*, *Poker Face*
-  (over 60). A "~" marks coaches too close to call, whose result is within normal ups and downs.
+  (over 60).
+- **The season in a paragraph:** the easiest and hardest coach to read and why, and how many sat in the middle.
 - **Plays a game his film gives away:** the share of the guessing his film removes, times his snaps per game. McVay
   2.7 in 2025; the average coach 0.4.
 - **The two ends of the scale**, a **tier board** of every play caller, and a **four-box picture**: his overall lean
@@ -131,6 +135,10 @@ The same film index in plain words, for anyone who watches football. Pick **View
   average in 2018-22), and, across 812 seasons from 112 play callers with 3+ seasons, the same comparison within each
   coach: in seasons a coach was harder to read than his own norm, his offense was slightly *less* efficient (about
   -0.017 EPA per play per 10 index points; small, but more than chance).
+- **Head to head:** two coaches side by side (this week's opponent next to one you know): tier, plays given away,
+  how often a defense guesses right with league norms and then with his film, his lean, and his if-then tells against
+  the NFL. Below it, **week by week**: each coach's film edge over his last 3 games, against the average play caller,
+  to show who's getting easier or harder to read.
 - **Scouting card** for any coach: a written verdict, his biggest tells as cards ("11 personnel: 72% PASS, average
   team 61%"), where his film fooled a defense, and a "Show the math" drawer.
 
@@ -145,21 +153,27 @@ Index's two scouts say how sure they were of the call that came: one knows only 
 the play caller's earlier games. Where his film was surer than league norms, his own habits **gave the call away**;
 where it was less sure, they **hid it**.
 
-- **When his own habits gave the call away:** each run or pass against that offense's usual run or pass that season
+- **When his own habits gave the call away:** verdict cards for runs and passes (2021-25, success rate: runs his
+  habits gave away were stopped more, -1.9 points against that offense's usual run; passes did better, +2.3), a
+  three-group chart (hid it / usual / gave it away, with a tick for the same offenses' usual number), and what it adds
+  up to (about 4 of a team's runs a game, roughly one fewer successful run every 13 games). Under **Show the math**:
+  each run or pass against that offense's usual run or pass that season
   (so a great quarterback's predictable passes don't count as "predictable passes work"; a switch shows the raw
   numbers), grouped by how much his habits gave it away, with ±2 standard errors and a verdict for runs and passes.
   2021-25, about 109,000 snaps: **readable runs did worse** (-0.039 EPA per play and 2.7 percentage points lower
   success for every 10 points his habits gave a run away), while **readable passes didn't** (no EPA difference, and
   slightly *higher* success). Raw, readable passes look much better, but that's the quarterback: good passing teams
   are the ones whose film says pass.
-- **Calls the defense saw coming:** outcome by how sure each scout was. His film and league norms nearly match, so this
-  mostly shows the situation (3rd & long throws everyone sees coming work less often).
+- **Calls the defense saw coming:** "Does his film change this? No." Passes an average defense is 80%+ sure of work
+  44% of the time against 50% for toss-ups, because many are 3rd & long (bars show the down mix); his film moves the
+  scout's confidence by only about 0.3 points on average, so this is the situation, not the play caller. The chart by
+  how sure each scout was is in an expander.
 - **Play callers:** how often his runs and passes were given away, and how his given-away calls did against his other
   calls. **Sidebar:** seasons, outcome (EPA/play, success rate, explosive rate), raw vs within-offense, minimum plays.
 
 ![Surprise Plays](docs/surprise_2021_2025.png)
 
-### 3rd & 4th Down
+### 3rd and Medium
 
 Judges a 3rd-down call by the whole **series**: did the 3rd-down play, plus the 4th-down play after it if the team
 went for it, get a first down? Every 3rd-down run or pass is followed to the next 4th-down run, pass, punt, or field
@@ -170,13 +184,14 @@ goal in the same drive. Defaults to 3rd & 4-6 over the last five complete season
   than passes (39% vs 44%) but win more series (55% vs 49%): a stopped run leaves 4th & 1-2 37% of the time (12% for a
   pass), and teams go for it after 44% of short runs vs 15% of short passes.
 - **How the series plays out** (converted on 3rd or 4th, stopped on 4th, kicked, turned over), **why** (4th-down
-  distance, go-for-it and 4th-down conversion rates), **by distance and field position**, **over the years** (in 1999
-  teams rarely went for it and runs won fewer series than passes), and **play callers** for any season, with their
+  distance, go-for-it and 4th-down conversion rates), **by distance and field position**, **over the years** (three
+  then-vs-now numbers and run vs pass by era since 1999: runs won 45% of these series in 1999-2005 and 55% since
+  2020, as going for it after a short run rose from 15% to 43%), and **play callers** for any season, with their
   run share, series rate, and go-for-it rate.
 - **Read with care:** the run's edge is mostly the two-down plan, not the play (coaches who run there already intend
   to go for it), and runs on 3rd & medium are rare, so a coach's own numbers rest on a handful of plays.
 
-![3rd & 4th Down](docs/series_2021_2025.png)
+![3rd and Medium](docs/series_2021_2025.png)
 
 ## Data
 
@@ -208,6 +223,22 @@ abbreviation) because the machine that took them couldn't reach the CDN.
 The app downloads each season the first time it's picked and keeps a slimmed copy in `data/` (about 5 MB a
 season). The season in progress is re-downloaded every 12 hours so new weeks show up.
 
+### Weekly refresh
+
+A GitHub Actions workflow ([`.github/workflows/refresh.yml`](.github/workflows/refresh.yml)) runs **every Tuesday at
+5:30 AM Central**, after Monday Night Football. It runs the tests, downloads the latest play-by-play, and runs
+`refresh.py`, which precomputes the slow whole-season tables (every play caller's film index and balance score for
+every season since 1999, each with its five offense measures, for all snaps and neutral game script) into
+`precomputed/` (under 0.5 MB) and commits them. The "1999 to this season" trend and "a coach over the years"
+sections then open in well under a second instead of about two minutes. A finished season always uses the
+precomputed rows; the season in progress uses them only while they cover every game the app has loaded, and computes
+live otherwise. Locally: `python refresh.py` (every season) or `python refresh.py 2026` (just one).
+
+GitHub's schedule is in UTC, so the workflow is scheduled at both 10:30 and 11:30 UTC and skips whichever isn't 5:30 AM
+in Chicago that week (daylight saving time), going by which schedule fired so a late start still runs. You can also start it from the Actions tab (**Run workflow**). GitHub only runs
+schedules on the default branch, can start them several minutes late, and pauses them after 60 days without a commit
+to the repository (the job's own weekly commits keep it alive).
+
 ## Project structure
 
 ```
@@ -216,10 +247,13 @@ page_tendencies.py  Tendencies page: sidebar filters, tabs
 page_balance.py     Balance Score page
 page_surprise.py    Surprise Plays page
 surprise.py         Play-by-play surprise analysis (no Streamlit code)
+refresh.py          Weekly refresh: download the latest season, precompute whole-season tables
+precomputed/        The precomputed film-index and balance tables (committed by the weekly job)
+.github/workflows/  The weekly refresh schedule
 ui.py               Shared pieces for the play-caller pages (team colors and logos, charts, EPA trend)
 page_unpredictability.py  Unpredictability Index page
 unpredictability.py The unpredictability model (no Streamlit code)
-page_series.py      3rd & 4th Down page
+page_series.py      3rd and Medium page
 series.py           3rd-down series outcomes (no Streamlit code)
 play_callers.csv    Who called each team's offensive plays, by season and week
 data.py             Downloads nflfastR pbp + participation; builds the app's columns

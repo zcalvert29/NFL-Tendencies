@@ -116,3 +116,69 @@ def caller_table(d: pd.DataFrame, outcome: str, min_plays: int = 15) -> pd.DataF
                                                      if gave.sum() >= min_plays and (~gave).sum() >= min_plays else np.nan)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+# ---- Plain-language summaries ----------------------------------------------------------------------------------
+GROUPS = ["Hid it", "Usual", "Gave it away"]
+
+
+def group3(tell: pd.Series) -> pd.Series:
+    """Hid it / Usual / Gave it away: his habits made the call less or more predictable than league norms by
+    GAVE_AWAY or more."""
+    return pd.Series(np.select([tell < -GAVE_AWAY, tell > GAVE_AWAY], ["Hid it", "Gave it away"], "Usual"),
+                     index=tell.index)
+
+
+def three_groups(d: pd.DataFrame, outcome: str) -> pd.DataFrame:
+    """Per call and group: plays, the raw outcome, the same offenses' usual outcome for that call ("Own"), and the
+    difference with its standard error."""
+    col = PLAY_OUTCOMES[outcome][0]
+    g = d.assign(Group=group3(d["Tell"]))
+    rows = []
+    for (call, grp), h in g.groupby(["Call", "Group"]):
+        rows.append({"Call": call, "Group": grp, "Plays": len(h), "Value": h[col].mean(),
+                     "Own": (h[col] - h[f"{col} vs own"]).mean(), "Diff": h[f"{col} vs own"].mean(),
+                     "SE": h[f"{col} vs own"].sem()})
+    return pd.DataFrame(rows)
+
+
+def verdict(groups: pd.DataFrame, call: str) -> dict:
+    """The given-away group for one call: its difference from usual, whether it's clear (beyond 2 standard errors),
+    and a one-or-two-word headline."""
+    r = groups[(groups["Call"] == call) & (groups["Group"] == "Gave it away")]
+    if r.empty:
+        return {"head": "Too few plays", "diff": np.nan, "clear": False, "value": np.nan, "own": np.nan, "z": np.nan}
+    r = r.iloc[0]
+    z = r["Diff"] / r["SE"] if r["SE"] > 0 else 0.0
+    clear = abs(z) >= 2
+    head = ("Stopped more" if r["Diff"] < 0 else "Did better") if clear else "No clear cost"
+    return {"head": head, "diff": r["Diff"], "clear": clear, "value": r["Value"], "own": r["Own"], "z": z}
+
+
+def per_game(d: pd.DataFrame, outcome: str) -> dict:
+    """How many of a team's runs a game its habits gave away, and what the given-away difference adds up to over a
+    game and a 17-game season."""
+    team_games = d.drop_duplicates(["game_id", "posteam"]).shape[0]
+    runs = d[d["Call"] == "Run"]
+    given = runs[group3(runs["Tell"]) == "Gave it away"]
+    col = PLAY_OUTCOMES[outcome][0]
+    diff = given[f"{col} vs own"].mean() if len(given) else np.nan
+    per = len(given) / team_games if team_games else np.nan
+    return {"given_per_game": per, "runs_per_game": len(runs) / team_games if team_games else np.nan,
+            "diff": diff, "per_season": per * diff * 17 if pd.notna(diff) else np.nan}
+
+
+def obvious_mix(d: pd.DataFrame, call: str, sure: float = 0.8) -> tuple[pd.Series, float, float]:
+    """For calls an average defense was `sure`+ confident of: the share by situation, their success rate, and the
+    success rate of toss-ups (league confidence 40-60%) of the same call."""
+    c = d[d["Call"] == call]
+    s = c[c["League confidence"] >= sure]
+    if call == "Pass":
+        cat = np.select([(s["DN"] >= 3) & (s["ydstogo"] >= 7), s["DN"] >= 3, s["DN"] == 2],
+                        ["3rd/4th & 7+", "3rd/4th & 1-6", "2nd down"], "1st down")
+    else:
+        cat = np.select([(s["DN"] >= 3) & (s["ydstogo"] <= 2), s["ydstogo"] <= 2],
+                        ["3rd/4th & 1-2", "1st/2nd & 1-2"], "Other spots")
+    toss = c[c["League confidence"].between(0.4, 0.6)]
+    return (pd.Series(cat, index=s.index).value_counts(normalize=True), float(s["success"].mean()),
+            float(toss["success"].mean()))

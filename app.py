@@ -8,7 +8,7 @@ Run with:  streamlit run app.py
     page_balance.py     Balance Score: how close to 50/50 each play caller is on every decision down
     page_unpredictability.py  Unpredictability Index: how much a defense learns from each play caller's film
     page_surprise.py    Surprise Plays: do calls the defense could see coming do worse? (logic in surprise.py)
-    page_series.py      3rd & 4th Down: do runs or passes win more series once the 4th-down play counts
+    page_series.py      3rd and Medium: do runs or passes win more series once the 4th-down play counts
     data.py             downloads nflfastR pbp + participation from nflverse and builds the app's columns
     ui.py               shared pieces for the play-caller pages (team colors and logos, charts, EPA trend)
     series.py           3rd-down series outcomes (no Streamlit code)
@@ -26,6 +26,6 @@ pg = st.navigation([
     st.Page("page_unpredictability.py", title="Unpredictability Index", icon=":material/shuffle:",
             url_path="unpredictability"),
     st.Page("page_surprise.py", title="Surprise Plays", icon=":material/bolt:", url_path="surprise"),
-    st.Page("page_series.py", title="3rd & 4th Down", icon=":material/flag:", url_path="third-down"),
+    st.Page("page_series.py", title="3rd and Medium", icon=":material/flag:", url_path="third-and-medium"),
 ])
 pg.run()

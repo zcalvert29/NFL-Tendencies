@@ -376,8 +376,9 @@ def balance_cells(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
 
 
 def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
-    """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, and the
-    cells that cost him the most and the least (8+ snaps)."""
+    """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, the cells
+    that cost him the most and the least (8+ snaps), and "Guess right": how often a defense that always guessed his
+    most common call in each decision-down cell would have been right."""
     c = balance_cells(d, by_formation)
     counted = d[d["dd"].isin(BALANCE_CELLS)]        # EPA on the same decision-down snaps the score uses
     epa = counted.groupby(["posteam", "caller"])["epa"].mean() if "epa" in d else pd.Series(dtype=float)
@@ -395,9 +396,21 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
                      "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
                      "Most lopsided": "" if worst is None else f"{worst['cell']}: {worst['Pass rate']:.0%} pass",
                      "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass",
+                     "Guess right": (g["Snaps"] * np.maximum(g["Pass rate"], 1 - g["Pass rate"])).sum() / n,
                      "EPA/play": epa.get((team, caller), np.nan)})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
+
+
+def league_guess(d: pd.DataFrame, by_formation: bool = False) -> float:
+    """How often a defense would be right guessing the LEAGUE's most common call in each decision-down cell, over
+    these snaps: the bar a play caller's own "Guess right" is measured against."""
+    c = balance_cells(d, by_formation)
+    league = c.assign(passes=c["Pass rate"] * c["Snaps"]).groupby("cell")[["passes", "Snaps"]].sum()
+    p = league["passes"] / league["Snaps"]
+    c["league_p"] = c["cell"].map(p)
+    right = np.where(c["league_p"] >= 0.5, c["Pass rate"], 1 - c["Pass rate"])
+    return float((right * c["Snaps"]).sum() / c["Snaps"].sum()) if len(c) else np.nan
 
 
 def balance_reliability(d: pd.DataFrame, by_formation: bool = False, min_snaps: int = MIN_SNAPS) -> float:
@@ -599,3 +612,22 @@ def outcomes(snaps: pd.DataFrame, neutral: bool = False) -> pd.DataFrame:
     out["Points per drive"] = (drives["fixed_drive_result"].map(DRIVE_POINTS).fillna(0)
                                .groupby([drives["posteam"], drives["caller"]]).mean())
     return out.reset_index().rename(columns={"posteam": "Team", "caller": "Play caller"})
+
+
+# ---- Whole-season tables (the outcome trend and coach-history sections; precomputed weekly by refresh.py) ----
+def film_season_table(d: pd.DataFrame, clues: list[str], season: int, neutral: bool) -> pd.DataFrame:
+    """One season's film index (whole season, by play caller, from score()) with every outcome over the same scored
+    snaps."""
+    t = caller_table(d, clues)
+    t = t[t["Unpredictability index"].notna()].drop(columns=["EPA/play"])
+    return t.merge(outcomes(d[d["scored"]], neutral), on=["Team", "Play caller"]).assign(Season=season)
+
+
+def balance_season_table(plays: pd.DataFrame, season: int, neutral: bool) -> pd.DataFrame:
+    """One season's balance table (whole season, by play caller) with every outcome over the same decision-down
+    snaps."""
+    d = sample(plays, season)
+    t = balance_table(d)
+    t = t[t["Snaps"] >= MIN_SNAPS].drop(columns=["EPA/play"])
+    snaps = d[d["dd"].isin(BALANCE_CELLS)]
+    return t.merge(outcomes(snaps, neutral), on=["Team", "Play caller"]).assign(Season=season)

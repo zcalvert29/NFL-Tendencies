@@ -29,6 +29,7 @@ FTN_URL = RELEASES + "/ftn_charting/ftn_charting_{season}.parquet"
 FTN_FIRST_SEASON = 2022      # FTN's charting (motion, play action, RPO, backfield) starts here, in season included
 
 DATA_DIR = Path(__file__).parent / "data"
+PRECOMPUTED_DIR = Path(__file__).parent / "precomputed"   # whole-season tables, refreshed weekly (refresh.py)
 FIRST_SEASON = 1999          # nflfastR play-by-play starts here
 PARTICIPATION_FIRST_SEASON = 2016   # personnel, formation, box count, coverage
 XPASS_FIRST_SEASON = 2006    # xpass / PROE, air yards, and pass direction start here
@@ -230,3 +231,12 @@ if __name__ == "__main__":
     for arg in sys.argv[1:] or [str(current_season())]:
         p = fetch_season(int(arg), force=True)
         print(f"{arg}: {len(pd.read_parquet(p)):,} plays -> {p}")
+
+
+def load_precomputed(kind: str) -> pd.DataFrame:
+    """The weekly job's whole-season table ("film" or "balance"), or an empty frame if it hasn't run."""
+    path = PRECOMPUTED_DIR / f"{kind}.parquet"
+    try:
+        return pd.read_parquet(path)
+    except (OSError, ValueError):
+        return pd.DataFrame()
