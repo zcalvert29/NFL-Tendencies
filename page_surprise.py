@@ -3,6 +3,7 @@ Surprise Plays page: play by play, does a call the defense could see coming do w
 the scouts come from the Unpredictability Index (unpredictability.py).
 """
 import altair as alt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -16,7 +17,8 @@ CALL_COLORS = {"Pass": cm.PASS_C, "Run": cm.RUN_C}
 
 @st.cache_data(show_spinner="Scoring every snap…", ttl=dt.REFRESH_HOURS * 3600)
 def all_snaps(seasons: tuple[int, ...]) -> pd.DataFrame:
-    keep = ["Season", "posteam", "caller", "Call", "epa", "success", "explosive", "Film confidence",
+    keep = ["Season", "game_id", "posteam", "caller", "Call", "DN", "ydstogo", "epa", "success", "explosive",
+            "Film confidence",
             "League confidence", "Tell", "Tell group", "epa vs own", "success vs own", "explosive vs own", "Tell vs own"]
     return pd.concat([sp.snaps(ui.scored(s, None, "caller")[0], s)[keep] for s in seasons], ignore_index=True)
 
@@ -52,6 +54,112 @@ def confidence_chart(c: pd.DataFrame, outcome: str) -> alt.Chart:
     ).properties(height=320)
 
 
+# ---- Plain-language pieces ------------------------------------------------------------------------------------
+CSS = """<style>
+.sp-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.sp-card{border:1px solid rgba(128,128,128,.3);border-radius:10px;padding:16px;border-top:6px solid;display:flex;flex-direction:column;gap:6px}
+.sp-tag{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.sp-head{font-size:28px;font-weight:800;text-transform:uppercase;line-height:1.05}
+.sp-num{font-size:40px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.sp-sub{font-size:14px;opacity:.75}
+.sp-callout{border:1px solid rgba(128,128,128,.3);border-left:6px solid;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.sp-q{font-size:18px;font-weight:700}
+.sp-mix{display:flex;height:30px;border-radius:6px;overflow:hidden}
+.sp-mix span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden}
+.sp-mixlbl{font-size:14px;font-weight:600;margin-bottom:4px}
+</style>"""
+
+
+def size_text(v: float, outcome: str) -> str:
+    """A difference in the outcome's own units: '-1.9 pts' (rates) or '-0.006 EPA'."""
+    return f"{v * 100:+.1f} pts" if "%" in sp.PLAY_OUTCOMES[outcome][1] else f"{v:+.3f} EPA"
+
+
+def level_text(v: float, outcome: str) -> str:
+    return f"{v:.1%}" if "%" in sp.PLAY_OUTCOMES[outcome][1] else f"{v:+.3f}"
+
+
+def verdicts_html(groups: pd.DataFrame, outcome: str) -> str:
+    cards = []
+    for call, color in (("Run", cm.RUN_C), ("Pass", cm.PASS_C)):
+        v = sp.verdict(groups, call)
+        noun = sp.plural(call)
+        if pd.isna(v["diff"]):
+            sub = "Too few plays here."
+        else:
+            sure = (f"Clear: about {abs(v['z']):.0f}× its margin of error." if v["clear"]
+                    else "Within its margin of error.")
+            sub = (f"{outcome} vs that offense's usual {call.lower()} ({level_text(v['value'], outcome)} vs "
+                   f"{level_text(v['own'], outcome)}). {sure}")
+        cards.append(f'<div class="sp-card" style="border-top-color:{color}"><span class="sp-tag">{noun.capitalize()} his '
+                     f'habits gave away</span><span class="sp-head" style="color:{color}">{v["head"]}</span>'
+                     f'<span class="sp-num">{"–" if pd.isna(v["diff"]) else size_text(v["diff"], outcome)}</span>'
+                     f'<span class="sp-sub">{sub}</span></div>')
+    return CSS + f'<div class="sp-row">{"".join(cards)}</div>'
+
+
+def three_group_chart(g: pd.DataFrame, outcome: str) -> alt.LayerChart:
+    fmt = sp.PLAY_OUTCOMES[outcome][1]
+    g = g.assign(Calls=g["Call"].map(sp.plural).str.capitalize(),
+                 label=g["Value"].map(lambda v: level_text(v, outcome)))
+    x = alt.X("Group:N", sort=sp.GROUPS, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=13))
+    color = alt.Color("Call:N", scale=alt.Scale(domain=["Run", "Pass"], range=[cm.RUN_C, cm.PASS_C]), legend=None)
+    tip = ["Calls", "Group", alt.Tooltip("Value:Q", format=fmt, title=outcome),
+           alt.Tooltip("Own:Q", format=fmt, title="That offense's usual"), alt.Tooltip("Plays:Q", format=",")]
+    lo = float(min(g["Value"].min(), g["Own"].min()))
+    span = float(max(g["Value"].max(), g["Own"].max())) - lo
+    scale = alt.Scale(domain=[lo - span * 0.6, lo + span * 1.35], zero=False)
+    base = alt.Chart(g).encode(x=x, tooltip=tip)
+    floor = lo - span * 0.6
+    bars = base.transform_calculate(floor=str(floor)).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+        y=alt.Y("Value:Q", title=outcome, axis=alt.Axis(format=fmt), scale=scale), y2="floor:Q", color=color,
+        opacity=alt.condition("datum.Group == 'Usual'", alt.value(0.55), alt.value(1)))
+    tick = base.mark_tick(color=cm.theme_ink(), thickness=3, size=60).encode(y="Own:Q")
+    text = base.mark_text(dy=-10, fontWeight="bold", color=cm.theme_ink()).encode(y="Value:Q", text="label:N")
+    return alt.layer(bars, tick, text).properties(height=300, width=260).facet(
+        column=alt.Column("Calls:N", sort=["Runs", "Passes"], title=None,
+                          header=alt.Header(labelFontSize=15, labelFontWeight="bold")))
+
+
+def per_game_sentence(pg: dict, outcome: str) -> str:
+    if pd.isna(pg["diff"]) or pd.isna(pg["given_per_game"]):
+        return ""
+    base = (f"About {pg['given_per_game']:.0f} of a team's {pg['runs_per_game']:.0f} runs a game are ones its own "
+            "habits gave away.")
+    if outcome == "Success rate":
+        lost = -pg["per_season"]
+        what = ("one fewer successful run" if lost > 0 else "one more successful run")
+        every = 17 / abs(pg["per_season"]) if pg["per_season"] else np.nan
+        return (f"{base} They work {abs(pg['diff']) * 100:.1f} points {'less' if pg['diff'] < 0 else 'more'} often "
+                f"than usual: about {what} every {every:.0f} games, or {abs(pg['per_season']):.1f} a season.")
+    if outcome == "EPA/play":
+        return (f"{base} They gain {abs(pg['diff']):.3f} EPA {'less' if pg['diff'] < 0 else 'more'} than usual: about "
+                f"{abs(pg['per_season']):.1f} expected points a season.")
+    return (f"{base} They go for an explosive gain {abs(pg['diff']) * 100:.1f} points "
+            f"{'less' if pg['diff'] < 0 else 'more'} often than usual.")
+
+
+def obvious_callout_html(d: pd.DataFrame) -> str:
+    def mix_bar(call: str, colors: list[str]) -> tuple[str, float, float]:
+        mix, success, toss = sp.obvious_mix(d, call)
+        parts = "".join(f'<span title="{k}: {v:.0%}" style="width:{v * 100:.1f}%;background:{colors[i % len(colors)]};'
+                        f'color:{"#16212B" if i > 1 else "#fff"}">{f"{k} {v:.0%}" if v >= 0.1 else ""}</span>'
+                        for i, (k, v) in enumerate(mix.items()))
+        return f'<div class="sp-mix">{parts}</div>', success, toss
+    pbar, ps, pt = mix_bar("Pass", [cm.PASS_C, "#7A74C9", "#A9A4DE", "#C9C6EA"])
+    rbar, rs, _ = mix_bar("Run", [cm.RUN_C, "#D3A15C", "#E6C899"])
+    film_gap = abs((d["Film confidence"] - d["League confidence"]).mean()) * 100
+    return CSS + (
+        f'<div class="sp-callout" style="border-left-color:{cm.PASS_C}"><span class="sp-q">Does his film change this? '
+        f'No.</span><span>Passes an average defense would see coming work {ps:.0%} of the time, against {pt:.0%} for '
+        f'toss-ups, because many are 3rd & long. Runs everyone sees coming work <b>more</b> often ({rs:.0%}): they\'re '
+        f'mostly short yardage. His own film moves the scout\'s confidence by about {film_gap:.1f} points on average, so '
+        f'this is the situation, not the play caller. The section above takes the situation out.</span>'
+        f'<div><div class="sp-mixlbl">Passes an average defense was 80%+ sure of (they worked {ps:.0%})</div>{pbar}</div>'
+        f'<div><div class="sp-mixlbl">Runs an average defense was 80%+ sure of (they worked {rs:.0%})</div>{rbar}</div>'
+        '</div>')
+
+
 # ---- Page ----------------------------------------------------------------------------------------------------
 seasons = dt.available_seasons()
 info = ui.team_info()
@@ -60,7 +168,9 @@ with st.sidebar:
     st.header("Surprise Plays")
     span = st.slider("Seasons", seasons[0], seasons[-1], (max(seasons[0], last_full - 4), last_full), key="sp_span",
                      help="Every film-scored snap (each play caller's 4th game on) in these regular seasons.")
-    outcome = st.selectbox("Did the play work? Measured by", list(sp.PLAY_OUTCOMES), key="sp_outcome")
+    outcome = st.selectbox("Did the play work? Measured by", list(sp.PLAY_OUTCOMES), index=1, key="sp_outcome",
+                           help="Success rate (the play gained ground for its down) is the plainest; EPA per play "
+                                "weighs big plays more.")
     within = st.toggle("Compare each play with that offense's usual run or pass", True, key="sp_within",
                        help="On: each play against the same offense's average run (or pass) that season, so a great "
                             "quarterback's predictable passes don't count as 'predictable passes work'. Off: raw.")
@@ -82,20 +192,28 @@ if d.empty:
     st.stop()
 
 st.subheader("When his own habits gave the call away")
-for call in ("Run", "Pass"):
-    st.markdown(sp.tell_sentence(sp.tell_trend(d, call, outcome, within), call, outcome, within))
-st.altair_chart(tell_chart(sp.by_tell(d, outcome, within), outcome, within), width="stretch")
-st.caption(f"{len(d):,} snaps, {years}. Groups by how much his film moved the scout's confidence in the call that came, "
-           "compared with league norms alone. " + ("Bars = the play against that offense's average run or pass that "
-           "season (0 = his usual)." if within else "Bars = the raw average.") + " Lines = ±2 standard errors: groups "
-           "whose lines cross 0 aren't clearly different from usual. Most plays sit in the middle group: a habit has to "
-           "show up again and again before the film scout trusts it.")
+groups = sp.three_groups(d, outcome)
+st.html(verdicts_html(groups, outcome))
+st.altair_chart(three_group_chart(groups, outcome), width="stretch")
+pg = sp.per_game(d, outcome)
+st.caption(per_game_sentence(pg, outcome) + f" {len(d):,} snaps, {years}. \"Gave it away\" = his own habits made the "
+           f"call {sp.GAVE_AWAY * 100:.0f}+ points more predictable than league norms; \"hid it\" = {sp.GAVE_AWAY * 100:.0f}+ "
+           "points less. Black tick = the same offenses' usual run or pass that season.")
+with st.expander("Show the math"):
+    for call in ("Run", "Pass"):
+        st.markdown(sp.tell_sentence(sp.tell_trend(d, call, outcome, within), call, outcome, within))
+    st.altair_chart(tell_chart(sp.by_tell(d, outcome, within), outcome, within), width="stretch")
+    st.caption("Five groups by how much his film moved the scout's confidence in the call that came, compared with "
+               "league norms alone. " + ("Bars = the play against that offense's average run or pass that season "
+               "(0 = his usual)." if within else "Bars = the raw average.") + " Lines = ±2 standard errors: groups whose "
+               "lines cross 0 aren't clearly different from usual. The sentences fit a line through every play.")
 
 st.subheader("Calls the defense saw coming")
-st.altair_chart(confidence_chart(sp.by_confidence(d, outcome), outcome), width="stretch")
-st.caption("Raw averages by how sure each scout was. Solid = his film; dashed = league norms. The two lines nearly "
-           "match, so this mostly shows the situation, not the coach: passes everyone sees coming are 3rd & long "
-           "throws, which work less often for every team. The section above takes the league part out.")
+st.html(obvious_callout_html(d))
+with st.expander("Show the chart"):
+    st.altair_chart(confidence_chart(sp.by_confidence(d, outcome), outcome), width="stretch")
+    st.caption("Raw averages by how sure each scout was. Solid = his film; dashed = league norms. The two lines nearly "
+               "match: this is the situation, not the coach.")
 
 st.subheader("Play callers")
 ct = sp.caller_table(d, outcome, min_plays)

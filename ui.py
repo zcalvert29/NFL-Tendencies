@@ -23,7 +23,8 @@ def plays(season: int) -> pd.DataFrame:
 def scored(season: int, weeks: tuple[int, int] | None, by: str) -> tuple[pd.DataFrame, list[str]]:
     d, clues = up.score(plays(season), season, weeks, by=by)
     keep = ["posteam", "caller", "Week", "game_id", "PASS", "pass_oe", "epa", "scored", "xpass", "success",
-            "explosive", "first_down", "DN", "qtr", "score_differential", "fixed_drive", "fixed_drive_result"]
+            "explosive", "first_down", "DN", "ydstogo", "qtr", "score_differential", "fixed_drive",
+            "fixed_drive_result"]
     keep += [c for c in d.columns if c.startswith(("p_", "gain_", "bits_"))]
     keep += [c for k in clues for c in up.CLUES[k][1]]
     return d[keep], clues
@@ -168,24 +169,43 @@ def badge_html(r: pd.Series, size: int = 26) -> str:
 SPANS = ["This season", "Last 5 seasons", "1999 to this season"]
 
 
+@st.cache_data(show_spinner=False, ttl=dt.REFRESH_HOURS * 3600)
+def _precomputed(kind: str) -> pd.DataFrame:
+    return dt.load_precomputed(kind)
+
+
+def _from_precomputed(kind: str, season: int, neutral: bool) -> pd.DataFrame | None:
+    """The weekly job's rows for this season. A finished season's never change; the current season's are used only if
+    they cover every game the app has loaded (a newer download since Tuesday's refresh means computing live)."""
+    t = _precomputed(kind)
+    if t.empty:
+        return None
+    rows = t[(t["Season"] == season) & (t["Neutral"] == neutral)]
+    if rows.empty or (season >= dt.current_season()
+                      and rows["_season_games"].iloc[0] < plays(season)["game_id"].nunique()):
+        return None
+    # seasons are stacked in one file, so drop the columns this season doesn't have (e.g. Motion before 2022)
+    return rows.drop(columns=["Neutral", "_season_games"]).dropna(axis=1, how="all").reset_index(drop=True)
+
+
 @st.cache_data(show_spinner="Scoring a season…", ttl=dt.REFRESH_HOURS * 3600)
 def film_season(season: int, neutral: bool) -> pd.DataFrame:
     """One season's film index (whole season, by play caller) with every outcome over the same scored snaps."""
+    pre = _from_precomputed("film", season, neutral)
+    if pre is not None:
+        return pre
     d, clues = scored(season, None, "caller")
-    t = up.caller_table(d, clues)
-    t = t[t["Unpredictability index"].notna()].drop(columns=["EPA/play"])
-    return t.merge(up.outcomes(d[d["scored"]], neutral), on=["Team", "Play caller"]).assign(Season=season)
+    return up.film_season_table(d, clues, season, neutral)
 
 
 @st.cache_data(show_spinner="Measuring a season…", ttl=dt.REFRESH_HOURS * 3600)
 def balance_season(season: int, neutral: bool) -> pd.DataFrame:
     """One season's balance table (whole season, by play caller) with every outcome over the same decision-down
     snaps."""
-    d = up.sample(plays(season), season)
-    t = up.balance_table(d)
-    t = t[t["Snaps"] >= up.MIN_SNAPS].drop(columns=["EPA/play"])
-    snaps = d[d["dd"].isin(up.BALANCE_CELLS)]
-    return t.merge(up.outcomes(snaps, neutral), on=["Team", "Play caller"]).assign(Season=season)
+    pre = _from_precomputed("balance", season, neutral)
+    if pre is not None:
+        return pre
+    return up.balance_season_table(plays(season), season, neutral)
 
 
 def stacked(loader, seasons: range | list[int], neutral: bool) -> pd.DataFrame:

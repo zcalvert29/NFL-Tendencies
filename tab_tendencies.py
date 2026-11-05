@@ -230,7 +230,144 @@ def render_down_calls(team_d, team, down):
                "games, oldest first.")
 
 
+# ---- Cheat sheet and "lately" ---------------------------------------------------------------------------------
+CHEAT_MIN_PLAYS = 20      # a look needs this many plays to make the cheat sheet
+CHEAT_TOP = 6
+LATELY_GAMES = 4          # "lately" = their last this-many games in the selection
+LATELY_FLAG = 0.08        # a split that moved this much (8 points) gets flagged...
+LATELY_MIN_PLAYS = 15     # ...if the last games have this many plays in it
+
+
+def _looks(d: pd.DataFrame) -> dict[str, pd.Series]:
+    """The pre-snap looks a coordinator scouts, as one label per play (missing where the season has no charting)."""
+    dd = d["DN"].map(lambda n: dt.DOWN_NAMES.get(int(n)) if pd.notna(n) else None) + " & " + \
+        d["Distance"].astype(str).str.split(" (", regex=False).str[0].str.lower()
+    last = np.where(d["first_of_drive"], "Start of a drive", "After a " + d["prev_type"].fillna("").str.lower())
+    looks = {"Down & distance": dd, "Formation": d["Formation"], "Personnel": d["Personnel"].map(
+                 lambda v: f"{v} personnel" if isinstance(v, str) else None),
+             "Motion": d["Motion"].map({"Motion": "With motion", "No motion": "No motion"}),
+             "Backfield": d["Backfield"], "Last call": pd.Series(last, index=d.index),
+             "Field": pd.Series(np.where(d["yardline_100"] <= 20, "Red zone", None), index=d.index)}
+    return {k: v for k, v in looks.items() if v.notna().any()}
+
+
+def cheat_sheet(team_d: pd.DataFrame, league_d: pd.DataFrame) -> pd.DataFrame:
+    """Their strongest tells across every look: where their pass rate is furthest from the NFL's in the same look
+    (CHEAT_MIN_PLAYS+ plays), with how often those plays worked."""
+    tl, ll = _looks(team_d), _looks(league_d)
+    rows = []
+    for dim, labels in tl.items():
+        nfl = league_d.groupby(ll[dim])["PASS"].mean()
+        for look, g in team_d.groupby(labels):
+            if len(g) < CHEAT_MIN_PLAYS or look in ("", "After a ") or look not in nfl.index:
+                continue
+            rows.append({"Look type": dim, "Look": look, "Plays": len(g), "Pass rate": g["PASS"].mean(),
+                         "NFL": nfl[look], "Worked": g["success"].mean()})
+    t = pd.DataFrame(rows)
+    if t.empty:
+        return t
+    t["Gap"] = t["Pass rate"] - t["NFL"]
+    return t.reindex(t["Gap"].abs().sort_values(ascending=False).index).head(CHEAT_TOP).reset_index(drop=True)
+
+
+def cheat_html(t: pd.DataFrame) -> str:
+    cards = []
+    for _, r in t.iterrows():
+        passy = r["Gap"] > 0
+        color = cm.PASS_C if passy else cm.RUN_C
+        rate, nfl = (r["Pass rate"], r["NFL"]) if passy else (1 - r["Pass rate"], 1 - r["NFL"])
+        cards.append(f'<div style="{cm.CARD};display:flex;flex-direction:column;gap:3px">'
+                     f'<span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;'
+                     f'opacity:.65">{r["Look type"]}</span><span style="font-weight:600">{r["Look"]}</span>'
+                     f'<span style="font-size:26px;font-weight:800;line-height:1.1;color:{color}">'
+                     f'{"PASS" if passy else "RUN"} {rate:.0%}</span>'
+                     f'<span style="font-size:12px;opacity:.7">NFL {nfl:.0%} · {r["Plays"]} plays · worked '
+                     f'{r["Worked"]:.0%} of the time</span></div>')
+    return ('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;'
+            f'max-width:980px">{"".join(cards)}</div>')
+
+
+LATELY_SPLITS = [("Overall", lambda d: d), ("1st down", lambda d: d[d["DN"] == 1]),
+                 ("2nd down", lambda d: d[d["DN"] == 2]), ("3rd down", lambda d: d[d["DN"] == 3]),
+                 ("Red zone", lambda d: d[d["yardline_100"] <= 20]), ("Shotgun", lambda d: d[d["shotgun"] == 1]),
+                 ("Under center", lambda d: d[d["shotgun"] == 0])]
+
+
+def lately(team_d: pd.DataFrame, league_d: pd.DataFrame) -> pd.DataFrame:
+    """Pass rate over expected (or, before 2006, pass rate minus the NFL's) in each split: the whole selection vs
+    their last LATELY_GAMES games, with a flag where it moved LATELY_FLAG+."""
+    games = team_d.drop_duplicates("game_id").sort_values(["Season", "Week"])["game_id"]
+    if len(games) < LATELY_GAMES + 2:
+        return pd.DataFrame()
+    recent_ids = set(games.tail(LATELY_GAMES))
+    use_proe = cm.has_xpass(team_d)
+
+    def lean(d: pd.DataFrame, lg: pd.DataFrame) -> float:
+        if use_proe:
+            return d["pass_oe"].mean() / 100
+        return d["PASS"].mean() - lg["PASS"].mean()
+    rows = []
+    for label, pick in LATELY_SPLITS:
+        whole, lg = pick(team_d), pick(league_d)
+        recent = whole[whole["game_id"].isin(recent_ids)]
+        if len(whole) < LATELY_MIN_PLAYS or recent.empty:
+            continue
+        rows.append({"Split": label, "Season": lean(whole, lg), "Lately": lean(recent, lg), "Recent plays": len(recent)})
+    t = pd.DataFrame(rows)
+    if len(t):
+        t["Flag"] = ((t["Lately"] - t["Season"]).abs() >= LATELY_FLAG) & (t["Recent plays"] >= LATELY_MIN_PLAYS)
+    return t
+
+
+def lately_chart(t: pd.DataFrame, measure: str) -> alt.LayerChart:
+    order = list(t["Split"])
+    y = alt.Y("Split:N", sort=order, title=None, axis=alt.Axis(labelFontSize=13))
+    tip = ["Split", alt.Tooltip("Season:Q", format="+.0%", title="Whole selection"),
+           alt.Tooltip("Lately:Q", format="+.0%", title=f"Last {LATELY_GAMES} games"),
+           alt.Tooltip("Recent plays:Q", title="Plays in the last games")]
+    lo = float(min(t["Season"].min(), t["Lately"].min(), 0)) - 0.05
+    hi = float(max(t["Season"].max(), t["Lately"].max(), 0)) + 0.05
+    x = alt.X("Season:Q", title=measure, axis=alt.Axis(format="+.0%"), scale=alt.Scale(domain=[lo, hi]))
+    base = alt.Chart(t).encode(y=y, tooltip=tip)
+    zero = alt.Chart(pd.DataFrame({"v": [0]})).mark_rule(color="#888780").encode(x="v:Q")
+    line = base.mark_rule(strokeWidth=3).encode(x=x, x2="Lately:Q", color=alt.condition(
+        "datum.Flag", alt.value("#C8321E"), alt.value("#888780")))
+    ring = base.mark_point(size=110, filled=False, strokeWidth=2.5, color=cm.theme_ink()).encode(x="Season:Q")
+    dot = base.mark_circle(size=130, opacity=1).encode(x="Lately:Q", color=alt.condition(
+        "datum.Flag", alt.value("#C8321E"), alt.value(cm.theme_ink())))
+    return alt.layer(zero, line, ring, dot).properties(height=36 * len(t) + 20)
+
+
+def render_cheat_and_lately(team_d: pd.DataFrame, league_d: pd.DataFrame, team: str) -> None:
+    t = cheat_sheet(team_d, league_d)
+    st.markdown(f"**{team} cheat sheet: the {CHEAT_TOP} strongest tells**")
+    if t.empty:
+        st.info(f"No look has {CHEAT_MIN_PLAYS}+ plays with these filters.")
+    else:
+        st.html(cheat_html(t))
+        st.caption(f"From every look on this page (down & distance, formation, personnel, motion, backfield, last call, "
+                   f"red zone), the {CHEAT_TOP} where their pass rate is furthest from the NFL's in the same look, "
+                   f"{CHEAT_MIN_PLAYS}+ plays each. Worked = share of those plays with positive EPA.")
+    lt = lately(team_d, league_d)
+    if lt.empty:
+        return
+    measure = "Pass rate over expected" if cm.has_xpass(team_d) else "Pass rate vs the NFL"
+    moved = lt[lt["Flag"]]
+    st.markdown(f"**Lately: their last {LATELY_GAMES} games vs the whole selection**")
+    if len(moved):
+        r = moved.reindex((moved["Lately"] - moved["Season"]).abs().sort_values(ascending=False).index).iloc[0]
+        st.warning(f"**{r['Split']} has changed:** {r['Season']:+.0%} for the whole selection, {r['Lately']:+.0%} in "
+                   f"the last {LATELY_GAMES} games ({'more pass-heavy' if r['Lately'] > r['Season'] else 'more run-heavy'}"
+                   "). Check the recent games before trusting the tables below for this spot.")
+    st.altair_chart(lately_chart(lt, measure), width="stretch")
+    st.caption(f"Ring = the whole selection; dot = their last {LATELY_GAMES} games. Red = moved "
+               f"{LATELY_FLAG * 100:.0f}+ points on {LATELY_MIN_PLAYS}+ recent plays. "
+               + ("Pass rate over expected: how much more often they throw than an average team in the same spots."
+                  if cm.has_xpass(team_d) else "Before 2006: their pass rate minus the NFL's in the same split."))
+
+
 def render(team_d: pd.DataFrame, league_d: pd.DataFrame, team: str) -> None:
+    render_cheat_and_lately(team_d, league_d, team)
     render_dd_grid(team_d, league_d, team)
     if cm.has_xpass(team_d):
         c1, c2 = st.columns(2)

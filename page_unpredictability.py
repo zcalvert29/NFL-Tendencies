@@ -237,9 +237,8 @@ def board_html(g: pd.DataFrame) -> str:
     for _, name in up.TIERS:
         color = TIER_COLORS[name]
         rows = g[g["Tier"] == name].sort_values("Unpredictability index")
-        chips = "".join(f'<div class="gl-chip">{ui.badge_html(r)}<span>{r["Play caller"]}</span>'
-                        f'{"<span class=q title=&quot;Too close to call&quot;>~</span>" if r["Sure"] == "Too close to call" else ""}'
-                        f'</div>' for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
+        chips = "".join(f'<div class="gl-chip">{ui.badge_html(r)}<span>{r["Play caller"]}</span></div>'
+                        for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
         cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
                     f'<div class="gl-def">{up.TIER_HELP[name]}</div>{chips}</div>')
     return ui.GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
@@ -297,6 +296,93 @@ def card_html(r: pd.Series, tl: list[dict], ml: list[dict], avg_given: float, se
     return ui.GLANCE_CSS + f'<div class="gl-card">{head}{body}</div>'
 
 
+def season_story(g: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int) -> str:
+    """The season in a sentence or three: the easiest and hardest play callers to read, and why."""
+    s = g.sort_values("Unpredictability index")
+    easy, hard = s.iloc[0], s.iloc[-1]
+    if easy["Lean edge"] >= easy["Look edge"] and abs(easy["Lean"]) >= 0.04:
+        why = f"mostly because he {'threw' if easy['Lean'] > 0 else 'ran'} more than expected everywhere"
+    elif easy["Biggest tell"] != "None":
+        why = f"most of all through {up.CLUE_WORDS.get(easy['Biggest tell'], str(easy['Biggest tell']).lower())}"
+    else:
+        why = "through a handful of habits"
+    hard_tells = up.tells(up.look_table(d_snaps, hard["Team"], hard["Play caller"], clues))
+    hard_why = ("no single look gave him away" if not hard_tells else
+                "what he did in earlier games didn't hold up in the next ones")
+    middle = int((g["Tier"] == "Average").sum())
+    color = lambda r: TIER_COLORS[r["Tier"]]   # noqa: E731
+    return (f"In {season}, <b style='color:{color(easy)}'>{easy['Play caller']}</b> was the easiest play caller to "
+            f"read: his film gave away about {max(easy['Plays given away'], 0):.1f} plays a game, {why}. "
+            f"<b style='color:{color(hard)}'>{hard['Play caller']}</b> was the hardest: {hard_why}. "
+            f"{middle} of {len(g)} play callers sat in the middle, where their film helps a defense about as much as an "
+            "average coach's.")
+
+
+def h2h_card_html(r: pd.Series, tl: list[dict]) -> str:
+    given = 0.0 if abs(r["Plays given away"]) < 0.05 else r["Plays given away"]
+    given_txt = f"{given:.1f}" if given >= 0 else "None (his film misleads)"
+    rules = "".join(
+        f'<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:8px;'
+        f'background:rgba(128,128,128,.09)"><span>If {t["look"][0].lower() + t["look"][1:]} → <b style="color:'
+        f'{cm.PASS_C if t["call"] == "PASS" else cm.RUN_C}">{t["call"]} {t["rate"]:.0%}</b></span>'
+        f'<span style="opacity:.65">NFL {t["league"]:.0%}</span></div>' for t in tl) or (
+        '<div style="padding:6px 10px;border-radius:8px;background:rgba(128,128,128,.09)">No look gives him away by '
+        '7+ points. Nothing to sit on.</div>')
+    return (f'<div class="gl-card" style="gap:12px"><div class="gl-head">{ui.badge_html(r, 44)}<div style="min-width:0">'
+            f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · weeks {r["Weeks"]}</div>'
+            f'</div><span class="gl-pill" style="background:{TIER_COLORS[r["Tier"]]}">{r["Tier"]}</span></div>'
+            '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:14px">'
+            f'<span>Plays a game his film gives away</span><b>{given_txt}</b>'
+            f'<span>Defense guesses right (league norms → his film)</span><b>{r["Generic accuracy"]:.0%} → '
+            f'{r["Film accuracy"]:.0%}</b><span>Throws vs what\'s expected</span><b>{r["Lean"] * 100:+.0f} pts</b></div>'
+            f'<div style="display:flex;flex-direction:column;gap:6px;font-size:14px">{rules}</div></div>')
+
+
+def weekly_chart(d_snaps: pd.DataFrame, picks: list[pd.Series], avg_edge: float) -> alt.LayerChart:
+    """Each pick's film edge game by game (3-game rolling average), with the average coach's season edge."""
+    rows = []
+    for r in picks:
+        s = d_snaps[(d_snaps["posteam"] == r["Team"]) & (d_snaps["caller"] == r["Play caller"]) & d_snaps["scored"]]
+        w = s.groupby("Week")["gain_film"].agg(["sum", "size"]).sort_index()
+        roll = w["sum"].rolling(3, min_periods=1).sum() / w["size"].rolling(3, min_periods=1).sum() * 100
+        rows += [{"Week": int(k), "Edge": v, "Coach": r["Play caller"], "color": r["color"]} for k, v in roll.items()]
+    f = pd.DataFrame(rows)
+    if f.empty:
+        return None
+    colors = [r["color"] for r in picks]
+    if len(set(colors)) < len(colors):
+        colors = [cm.PASS_C, cm.RUN_C][:len(picks)]
+    color = alt.Color("Coach:N", scale=alt.Scale(domain=[r["Play caller"] for r in picks], range=colors),
+                      legend=alt.Legend(title=None, orient="top"))
+    line = alt.Chart(f).mark_line(point=True, strokeWidth=3).encode(
+        x=alt.X("Week:O", title="Week", axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("Edge:Q", title="Film edge (bits per 100 snaps)"), color=color,
+        tooltip=["Coach", "Week", alt.Tooltip("Edge:Q", format="+.2f", title="Film edge, last 3 games")])
+    avg = alt.Chart(pd.DataFrame({"v": [avg_edge]})).mark_rule(color="#888780", strokeDash=[5, 4]).encode(y="v:Q")
+    return alt.layer(avg, line).properties(height=280)
+
+
+def render_head_to_head(g: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int) -> None:
+    order = g.sort_values("Unpredictability index")
+    labels = {f"{r['Play caller']} ({r['Team']}) · {r['Tier']}": i for i, r in order.iterrows()}
+    keys = list(labels)
+    c1, c2 = st.columns(2)
+    a = c1.selectbox("Play caller", keys, index=0, key=f"up_h2h_a_{season}")
+    b = c2.selectbox("Compare with", keys, index=len(keys) - 1, key=f"up_h2h_b_{season}")
+    picks = [g.loc[labels[a]], g.loc[labels[b]]]
+    c1, c2 = st.columns(2)
+    for col, r in zip((c1, c2), picks):
+        looks = up.look_table(d_snaps, r["Team"], r["Play caller"], clues)
+        col.html(ui.GLANCE_CSS + h2h_card_html(r, up.tells(looks, 4)))
+    st.markdown("###### Week by week: is he getting easier or harder to read?")
+    chart = weekly_chart(d_snaps, picks, float(g["Film edge"].mean()))
+    if chart is not None:
+        st.altair_chart(chart, width="stretch")
+        st.caption("His film edge over his last 3 games at each week: how much his earlier film helped a defense guess "
+                   "the next game's calls. Dashed line = the average play caller this season. Rising = getting easier "
+                   "to read; falling = he changed something.")
+
+
 def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str], season: int, rel: float,
                   highlight: list[str]) -> None:
     g = ranked.copy()
@@ -305,12 +391,13 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
     if pd.isna(rel) or rel < 0.3:
         st.warning("It's early: there isn't enough film yet to tell most coaches apart. Treat these tiers as a first "
                    "look; they settle down over a full season.")
+    st.markdown(f"<div style='font-size:19px;line-height:1.55;max-width:70ch'>{season_story(g, d_snaps, clues, season)}"
+                "</div>", unsafe_allow_html=True)
     st.html(anchors_html(g))
 
     st.subheader("Every play caller, by tier")
     st.html(board_html(g))
-    st.caption("~ = too close to call: his result is within the normal ups and downs, so he could sit a tier either "
-               "side. Pick any coach below for his scouting card.")
+    st.caption("Pick any coach below for his scouting card.")
 
     st.subheader("What gives him away?")
     st.markdown("Two ways a coach tips his hand. **Right:** he leans pass (or run) all the time, so a defense can just "
@@ -331,6 +418,10 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
                 "better in the seasons they're harder to read than usual.")
     ui.coach_history_section(ui.film_season, "Unpredictability index", "Unpredictability index", ".0f",
                              more="harder to read", per=10, unit="index points", info=info, key="up_hist")
+
+    st.subheader("Head to head")
+    st.markdown("Two play callers side by side: this week's opponent next to a coach you know.")
+    render_head_to_head(g, d_snaps, clues, season)
 
     st.subheader("Scouting card")
     order = g.sort_values("Unpredictability index")

@@ -1,0 +1,81 @@
+# Weekly data refresh: every Tuesday at 5:30 AM Central (after Monday Night Football). Runs the tests, downloads the
+# latest nflfastR play-by-play, precomputes the whole-season tables into precomputed/ (refresh.py), and commits them.
+#
+# GitHub's cron is in UTC and has no time zones, so it is scheduled at both 10:30 UTC (5:30 AM CDT, summer) and
+# 11:30 UTC (5:30 AM CST, winter); the first step skips whichever one isn't 5:30 AM in Chicago
+# that week (by which schedule fired, so a late start still runs). Run it by hand from the
+# Actions tab ("Run workflow"). Scheduled runs use the default branch, can start a few minutes late, and GitHub pauses
+# them after 60 days without commits to the repository (this job's own commits count).
+name: Weekly refresh
+
+on:
+  schedule:
+    - cron: "30 10 * * 2"
+    - cron: "30 11 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Only the schedule that is 5:30 AM Central
+        id: clock
+        # Picks by which cron fired, not the clock, so a run GitHub starts late still goes ahead.
+        run: |
+          if [ "$(TZ=America/Chicago date +%z)" = "-0500" ]; then want="30 10 * * 2"; else want="30 11 * * 2"; fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$want" ]; then
+            echo "This is the ${{ github.event.schedule }} schedule; '$want' is 5:30 AM in Chicago this week."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.clock.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.clock.outputs.go == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        if: steps.clock.outputs.go == 'true'
+        run: pip install -r requirements.txt pytest
+
+      - name: Cache play-by-play
+        if: steps.clock.outputs.go == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: pbp-${{ github.run_id }}
+          restore-keys: pbp-
+
+      - name: Tests
+        if: steps.clock.outputs.go == 'true'
+        run: python -m pytest -q
+
+      - name: Download and precompute
+        if: steps.clock.outputs.go == 'true'
+        run: python refresh.py
+
+      - name: Commit
+        if: steps.clock.outputs.go == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add precomputed
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "Weekly refresh: $(jq -r '"\(.current_season) through week \(.current_season_through_week)"' precomputed/meta.json)"
+            git push
+          fi
