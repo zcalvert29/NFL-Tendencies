@@ -170,8 +170,9 @@ goal in the same drive. Defaults to 3rd & 4-6 over the last five complete season
   than passes (39% vs 44%) but win more series (55% vs 49%): a stopped run leaves 4th & 1-2 37% of the time (12% for a
   pass), and teams go for it after 44% of short runs vs 15% of short passes.
 - **How the series plays out** (converted on 3rd or 4th, stopped on 4th, kicked, turned over), **why** (4th-down
-  distance, go-for-it and 4th-down conversion rates), **by distance and field position**, **over the years** (in 1999
-  teams rarely went for it and runs won fewer series than passes), and **play callers** for any season, with their
+  distance, go-for-it and 4th-down conversion rates), **by distance and field position**, **over the years** (three
+  then-vs-now numbers and run vs pass by era since 1999: runs won 45% of these series in 1999-2005 and 55% since
+  2020, as going for it after a short run rose from 15% to 43%), and **play callers** for any season, with their
   run share, series rate, and go-for-it rate.
 - **Read with care:** the run's edge is mostly the two-down plan, not the play (coaches who run there already intend
   to go for it), and runs on 3rd & medium are rare, so a coach's own numbers rest on a handful of plays.

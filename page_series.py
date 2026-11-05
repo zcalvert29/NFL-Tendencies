@@ -29,6 +29,10 @@ CSS = """<style>
 .sr-pair span{font-size:34px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
 .sr-pair small{display:block;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;opacity:.7;margin-top:3px}
 .sr-note{font-size:13px;opacity:.75}
+.sr-ba{display:flex;align-items:baseline;gap:10px;font-weight:800}
+.sr-a{font-size:26px;opacity:.6}
+.sr-arrow{font-size:18px;opacity:.6}
+.sr-b{font-size:38px}
 </style>"""
 
 
@@ -123,18 +127,60 @@ def split_chart(s: pd.DataFrame, group: str, order: list[str], title: str) -> al
     ).properties(height=70 * len(order) + 30)
 
 
-def years_chart(y: pd.DataFrame) -> alt.Chart:
-    long = y.melt(id_vars=["Season", "Call"], value_vars=["Won the series", "Go-for-it rate"], var_name="What",
-                  value_name="Rate")
-    return alt.Chart(long).mark_line(point=True).encode(
-        x=alt.X("Season:O", title=None, axis=alt.Axis(labelAngle=0, labelOverlap=True)),
-        y=alt.Y("Rate:Q", axis=alt.Axis(format=".0%"), title=None),
-        color=alt.Color("Call:N", scale=alt.Scale(domain=list(CALL_COLORS), range=list(CALL_COLORS.values())),
-                        legend=alt.Legend(title=None, orient="top")),
-        strokeDash=alt.StrokeDash("What:N", legend=alt.Legend(title=None, orient="top"),
-                                  scale=alt.Scale(domain=["Won the series", "Go-for-it rate"], range=[[1, 0], [6, 4]])),
-        tooltip=["Season", "Call", "What", alt.Tooltip("Rate:Q", format=".0%")],
-    ).properties(height=320)
+ERAS = [(1999, 2005), (2006, 2012), (2013, 2019), (2020, None)]   # None = through the latest season
+
+
+def era_table(d: pd.DataFrame, last: int) -> pd.DataFrame:
+    """summary() for each era and call, with the era's label."""
+    rows = []
+    for first, end in ERAS:
+        end = end or last
+        g = d[d["Season"].between(first, end)]
+        for call, h in g.groupby("Call"):
+            rows.append({"Era": f"{first}-{end}", "Call": call, **se.summary(h).to_dict()})
+    return pd.DataFrame(rows)
+
+
+def era_tiles_html(e: pd.DataFrame) -> str:
+    """Three before-and-after numbers: first era vs latest era."""
+    first, last = e["Era"].iloc[0], e["Era"].iloc[-1]
+    get = lambda era, call, col: e[(e["Era"] == era) & (e["Call"] == call)][col].iat[0]   # noqa: E731
+
+    def tile(label, a, b, color, sub):
+        return (f'<div class="sr-stat"><span class="sr-lbl">{label}</span><div class="sr-ba"><span class="sr-a">{a}'
+                f'</span><span class="sr-arrow">→</span><span class="sr-b" style="color:{color}">{b}</span></div>'
+                f'<div class="sr-note">{sub}</div></div>')
+    return CSS + '<div class="sr-why">' + "".join([
+        tile("Runs won the series", pct(get(first, "Run", "Won the series")), pct(get(last, "Run", "Won the series")),
+             cm.RUN_C, f"{first} → {last}"),
+        tile("Passes won the series", pct(get(first, "Pass", "Won the series")),
+             pct(get(last, "Pass", "Won the series")), cm.PASS_C, f"{first} → {last}"),
+        tile("Went for it after a short run", pct(get(first, "Run", "Go-for-it rate")),
+             pct(get(last, "Run", "Go-for-it rate")), "#2F8C86", "The reason: teams now use 4th down"),
+    ]) + "</div>"
+
+
+def era_chart(e: pd.DataFrame) -> alt.LayerChart:
+    """Run vs pass series won, by era; the go-for-it rate after a short run under each era."""
+    go = e[e["Call"] == "Run"].set_index("Era")["Go-for-it rate"]
+    e = e.assign(label=e["Era"] + "|went for it after a short run: " + e["Era"].map(go).map(pct))
+    order = list(dict.fromkeys(e["label"]))
+    x = alt.X("label:N", sort=order, title=None,
+              axis=alt.Axis(labelAngle=0, labelExpr="split(datum.label, '|')", labelFontSize=12, labelPadding=8,
+                            labelLimit=320))
+    base = alt.Chart(e).encode(x=x, xOffset=alt.XOffset("Call:N", sort=["Run", "Pass"]),
+                               tooltip=["Era", "Call", alt.Tooltip("Won the series:Q", format=".0%"),
+                                        alt.Tooltip("Plays:Q", format=","), alt.Tooltip("Go-for-it rate:Q", format=".0%")])
+    lo = max(0.0, round(float(e["Won the series"].min()) - 0.1, 1))   # bars start at the axis floor, not 0
+    base = base.transform_calculate(floor=str(lo))
+    bars = base.mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+        y=alt.Y("Won the series:Q", title="Won the series", axis=alt.Axis(format=".0%"),
+                scale=alt.Scale(domain=[lo, min(1.0, float(e["Won the series"].max()) + 0.06)])), y2="floor:Q",
+        color=alt.Color("Call:N", scale=alt.Scale(domain=["Run", "Pass"], range=[cm.RUN_C, cm.PASS_C]),
+                        legend=alt.Legend(title=None, orient="top")))
+    text = base.mark_text(dy=-8, fontWeight="bold", color=cm.theme_ink()).encode(
+        y="Won the series:Q", text=alt.Text("Won the series:Q", format=".0%"))
+    return alt.layer(bars, text).properties(height=340)
 
 
 # ---- Page ----------------------------------------------------------------------------------------------------
@@ -190,11 +236,16 @@ with c2:
 st.caption("Ring = converted on 3rd; dot = won the series; the line between them is what 4th down added. Hover for the "
            "number of calls and how often teams went for it.")
 
-if span[1] > span[0]:
-    st.subheader("Over the years")
-    st.altair_chart(years_chart(se.by(d, ["Season", "Call"])), width="stretch")
-    st.caption("Solid = won the series; dashed = went for it on 4th after a short 3rd down. As coaches go for it more, "
-               "the run's series edge grows: its short 3rd downs leave the shortest 4th downs.")
+st.subheader("Over the years")
+everything = third_downs(tuple(seasons))
+eras = era_table(everything[everything["ydstogo"].between(*togo) & everything["Zone"].isin(zones or se.ZONES)],
+                 seasons[-1])
+if eras["Era"].nunique() == len(ERAS) and eras.groupby("Era")["Call"].nunique().min() == 2:
+    st.html(era_tiles_html(eras))
+    st.altair_chart(era_chart(eras), width="stretch")
+    st.caption(f"Every regular season since {seasons[0]}, whatever the seasons picked in the sidebar ({dist}, the "
+               "field positions picked). As teams went for it on 4th more often, runs started winning more series: a "
+               "short run usually leaves 4th & short. Runs did worse in 2006-2012, before that change.")
 
 st.subheader("Play callers")
 caller_seasons = sorted(d["Season"].unique())[::-1]
