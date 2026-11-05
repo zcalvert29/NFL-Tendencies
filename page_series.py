@@ -1,5 +1,5 @@
 """
-3rd & 4th Down page: on 3rd down, do runs or passes win more series once the 4th-down play after a short 3rd down
+3rd and Medium page: on 3rd down, do runs or passes win more series once the 4th-down play after a short 3rd down
 counts? The series logic lives in series.py; this page draws it.
 """
 import altair as alt
@@ -142,7 +142,7 @@ seasons = dt.available_seasons()
 info = team_info()
 last_full = seasons[-2] if len(seasons) > 1 else seasons[-1]
 with st.sidebar:
-    st.header("3rd & 4th Down")
+    st.header("3rd and Medium")
     span = st.slider("Seasons", seasons[0], seasons[-1], (max(seasons[0], last_full - 4), last_full), key="sr_span",
                      help="The league numbers use every regular season in this range.")
     togo = st.slider("3rd & … to go", 1, 15, (4, 6), key="sr_togo", help="Default: 3rd & medium (4-6 yards).")

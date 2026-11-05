@@ -159,7 +159,7 @@ where it was less sure, they **hid it**.
 
 ![Surprise Plays](docs/surprise_2021_2025.png)
 
-### 3rd & 4th Down
+### 3rd and Medium
 
 Judges a 3rd-down call by the whole **series**: did the 3rd-down play, plus the 4th-down play after it if the team
 went for it, get a first down? Every 3rd-down run or pass is followed to the next 4th-down run, pass, punt, or field
@@ -176,7 +176,7 @@ goal in the same drive. Defaults to 3rd & 4-6 over the last five complete season
 - **Read with care:** the run's edge is mostly the two-down plan, not the play (coaches who run there already intend
   to go for it), and runs on 3rd & medium are rare, so a coach's own numbers rest on a handful of plays.
 
-![3rd & 4th Down](docs/series_2021_2025.png)
+![3rd and Medium](docs/series_2021_2025.png)
 
 ## Data
 
@@ -219,7 +219,7 @@ surprise.py         Play-by-play surprise analysis (no Streamlit code)
 ui.py               Shared pieces for the play-caller pages (team colors and logos, charts, EPA trend)
 page_unpredictability.py  Unpredictability Index page
 unpredictability.py The unpredictability model (no Streamlit code)
-page_series.py      3rd & 4th Down page
+page_series.py      3rd and Medium page
 series.py           3rd-down series outcomes (no Streamlit code)
 play_callers.csv    Who called each team's offensive plays, by season and week
 data.py             Downloads nflfastR pbp + participation; builds the app's columns
