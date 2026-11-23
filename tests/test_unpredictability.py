@@ -123,7 +123,8 @@ def test_balance_correction_removes_chance():
 
 def test_tiers_and_phrases():
     assert [up.tier(i) for i in (14, 40, 43, 50, 57, 60, 64)] == [
-        "Open Book", "Open Book", "Readable", "Average", "Mixes It Up", "Mixes It Up", "Poker Face"]
+        "Open Book", "Average", "Average", "Average", "Average", "Poker Face", "Poker Face"]
+    assert (up.tier(38), up.tier(38.1), up.tier(58), up.tier(58.1)) == ("Open Book", "Average", "Average", "Poker Face")
     assert up.look_name("Personnel", "11") == "11 personnel"
     assert up.look_phrase("Personnel", "11") == "In 11 personnel"
     assert up.look_phrase("Down & distance", "3rd & short") == "On 3rd & short"
@@ -151,8 +152,11 @@ def test_typical_split_and_tiers():
     assert up.typical_split(100) == 0.5
     assert abs(up.typical_split(87.5) - 0.6768) < 1e-3          # a 68/32 call
     assert up.split_text(0.6768) == "68/32"
-    assert [up.balance_tier(s) for s in (99, 92, 88, 85, 75)] == ["Coin Flip", "Balanced", "Average", "Leans", "Lopsided"]
-    assert up.balance_tier(88, by_formation=True) == "Balanced"  # tiers move up with the formation split
+    # typical calls: 55/45, 63/37, 67/33, 70/30, 75/25
+    assert [up.balance_tier(s) for s in (99, 93.5, 88, 84.5, 75)] == ["Balanced", "Balanced", "Average", "Average",
+                                                                     "Lopsided"]
+    assert up.balance_tier(88, by_formation=True) == "Balanced"  # cuts move up with the formation split
+    assert up.balance_tier(75, by_formation=True) == "Average"
 
 
 def test_points_lost_add_up_and_formation_split():

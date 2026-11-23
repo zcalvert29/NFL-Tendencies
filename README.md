@@ -21,7 +21,7 @@ Pick an offense in the sidebar. Five tabs:
 
 | Tab | What it shows |
 |---|---|
-| **Tendencies** | A **cheat sheet** of their 6 strongest tells across every look (down & distance, formation, personnel, motion, backfield, last call, red zone; 20+ plays each), ranked by how far their pass rate sits from the NFL's in the same look, with how often those plays worked; **lately**, their last 4 games against the whole selection in each split (PROE, or pass rate vs the NFL's before 2006), flagging a move of 8+ points on 15+ recent plays with a warning; then down & distance: a scouting-report sentence for each box that clearly differs from an average team (10+ plays, PROE of 5%+ either way), then the full grid (pass %, run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); PROE charts by down & distance and by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); offensive, formation, and personnel tendency tables; 3rd and 4th downs with NFL conversion rates; every 3rd/4th down call; best 10 plays |
+| **Tendencies** | The down & distance grid (pass %, run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); pass rate over expected by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); formation and personnel tendency tables (personnel from 2016 on, after each season is published) |
 | **Sequencing** | What they call after a run, a pass, a completion, an incompletion, a big gain, a loss, a play that worked or didn't, and on a new set of downs, each with the NFL's pass rate after the same kind of snap and PROE; by down after a run or a pass |
 | **Red zone** | Trips, touchdown rate, scoring rate, points per trip, and trips per game against the NFL; how trips ended; how it's called in each zone inside the 20 with NFL pass rate, success, and EPA; formations and personnel inside the 20; run/pass by direction between the 11 and 20 and inside the 10 |
 | **Run game** | Run-lane diagram (EPA and carries for each of nflfastR's seven lanes, colored against the NFL's EPA in the same lane); runs by lane, formation, distance, personnel, and box count; ball carriers; best runs |
@@ -42,7 +42,9 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   throws) and 4th & 4+ (a handful of snaps, nearly all passes). 3rd & medium stays on purpose: coaches who run there
   are playing it as the first of two downs, ready to go for it on 4th.
 - **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
-  call). **Tiers:** Coin Flip (62/38 or closer), Balanced, Average, Leans, Lopsided (beyond 71/29).
+  call). **Tiers:** Balanced (63/37 or closer), Average, Lopsided (beyond
+  70/30), cut so only the ends stand out: of every play caller's season since 1999, about 13% are Balanced, 10%
+  Lopsided, and the rest Average.
 - **How often would a defense guess right?** If a defense always guessed his most common call in each down &
   distance, the share of decision downs it would get right (Johnson 57% in 2025, Kingsbury 69%, the league's own
   most common call 61%). Shown next to each name on the tier board and as a dot chart against the league line.
@@ -62,7 +64,8 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
 - **A coach over the years:** any play caller with 3+ seasons, his balance and his offense season by season; and,
   across every such coach, whether his offense did better in seasons he was more balanced than his own norm (no).
 - **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
-  what a defense sees before the snap. Every caller looks about 5 points more lopsided that way, so the tiers move up.
+  what a defense sees before the snap. Every caller looks about 6 points more lopsided that way, so the tier cuts move up
+  (69/31 and 77/23).
 - **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
   gap between coaches is still noise. The balance score and the film index barely agree (r ≈ 0): McVay is an average
   66/34 caller by down & distance but the easiest coach to read on film.
@@ -117,8 +120,9 @@ These screenshots also use stand-in logo badges.
 The same film index in plain words, for anyone who watches football. Pick **View** in the sidebar to switch between
 **At a glance** and **Show the math** (every number and chart described above).
 
-- **Tiers** instead of scores: *Open Book* (index 40 or less), *Readable*, *Average*, *Mixes It Up*, *Poker Face*
-  (over 60).
+- **Tiers** instead of scores: *Open Book* (index 38 or less), *Average*, *Poker Face* (over 58), cut so only the
+  ends stand out: about 10% of play callers' seasons since 1999 at each end, 80% Average. Show the math's *Readable* /
+  *Hard to read* labels use the same cuts.
 - **The season in a paragraph:** the easiest and hardest coach to read and why, and how many sat in the middle.
 - **Plays a game his film gives away:** the share of the guessing his film removes, times his snaps per game. McVay
   2.7 in 2025; the average coach 0.4.

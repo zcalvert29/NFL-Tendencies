@@ -1,12 +1,10 @@
 """The plain-language summaries added on top of the models: the defense's guess-right rate (Balance Score), the
-three-group verdicts and down mix (Surprise Plays), the cheat sheet and "lately" check (Tendencies), and the weekly
-precomputed tables."""
+three-group verdicts and down mix (Surprise Plays), and the weekly precomputed tables."""
 import numpy as np
 import pandas as pd
 
 import data as dt
 import surprise as sp
-import tab_tendencies as tt
 import unpredictability as up
 from test_surprise import scored
 from test_unpredictability import NO_CALLERS, league
@@ -52,31 +50,6 @@ def test_obvious_mix():
     assert np.isclose(share.sum(), 1) and set(share.index) <= {"3rd/4th & 7+", "3rd/4th & 1-6", "2nd down",
                                                                "1st down"}
     assert 0 <= sure <= 1 and 0 <= toss <= 1
-
-
-def tendency_league():
-    d = league()
-    d["Season"], d["success"], d["shotgun"] = 2025, (d["epa"] > 0).astype(float), (d["Formation"] == "Shotgun") * 1
-    return d
-
-
-def test_cheat_sheet_finds_the_tell():
-    d = tendency_league()
-    t = tt.cheat_sheet(d[d["posteam"] == "TELL"], d)
-    top = t.iloc[0]
-    # TELL throws every shotgun snap and runs every under-center snap: those are his two biggest tells.
-    assert set(t["Look"].head(2)) == {"Shotgun", "Under center"} and abs(top["Gap"]) > 0.25
-    assert (t["Plays"] >= tt.CHEAT_MIN_PLAYS).all() and len(t) <= tt.CHEAT_TOP
-
-
-def test_lately_flags_a_recent_change():
-    d = tendency_league()
-    recent = (d["posteam"] == "AVG0") & (d["Week"] > 10 - tt.LATELY_GAMES) & (d["DN"] == 2)
-    d.loc[recent, "PASS"] = 0                               # started running every 2nd down
-    d["pass_oe"] = (d["PASS"] - d["xpass"]) * 100
-    t = tt.lately(d[d["posteam"] == "AVG0"], d).set_index("Split")
-    assert t.loc["2nd down", "Flag"] and t.loc["2nd down", "Lately"] < t.loc["2nd down", "Season"]
-    assert not t.loc["Shotgun", "Flag"] or t.loc["Shotgun", "Lately"] < t.loc["Shotgun", "Season"]
 
 
 def test_precomputed_missing_is_empty(tmp_path, monkeypatch):

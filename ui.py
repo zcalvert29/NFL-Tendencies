@@ -125,8 +125,9 @@ GLANCE_CSS = """<style>
 .gl-lbl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
 .gl-nm{font-size:24px;font-weight:700;line-height:1.15}
 .gl-sub{opacity:.7;font-size:14px}
-.gl-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
-@media (max-width:900px){.gl-board{grid-template-columns:1fr 1fr}}
+.gl-board{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);gap:10px}
+.gl-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));column-gap:16px}
+@media (max-width:900px){.gl-board{grid-template-columns:1fr}}
 @media (max-width:500px){.gl-board{grid-template-columns:1fr}}
 .gl-col{background:rgba(128,128,128,.07);border-radius:10px;padding:12px;border-top:6px solid;min-width:0}
 .gl-col h4{margin:0 0 2px;font-size:18px;text-transform:uppercase;letter-spacing:.03em;padding:0}
