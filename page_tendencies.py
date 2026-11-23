@@ -5,7 +5,7 @@ play-by-play, with pass rate over expected (PROE) and the league's numbers in th
     page_tendencies.py  this page: sidebar filters, tabs
     data.py             downloads nflfastR pbp + participation from nflverse and builds the app's columns
     common.py           metrics, NFL comparison columns, table colors, tendency badges, split bars
-    tab_tendencies.py   down & distance grid, PROE charts, tendency tables, 3rd/4th downs, best plays
+    tab_tendencies.py   down & distance grid, PROE by game situation, formation and personnel tables
     tab_sequencing.py   what they call after each kind of snap
     tab_red_zone.py     red zone trips and calls
     tab_run_game.py     run-lane diagram and run tables

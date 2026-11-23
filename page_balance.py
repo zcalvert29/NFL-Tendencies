@@ -13,8 +13,7 @@ import ui
 import unpredictability as up
 
 # ---- Balance score --------------------------------------------------------------------------------------
-BALANCE_COLORS = {"Coin Flip": "#2F8C86", "Balanced": "#5A9E6F", "Average": "#8A949A", "Leans": "#D9822B",
-                  "Lopsided": "#C8321E"}
+BALANCE_COLORS = {"Balanced": "#2F8C86", "Average": "#8A949A", "Lopsided": "#C8321E"}
 DOWN_COLORS = {"1st": "#3B5EA8", "2nd": "#7FA2E0", "3rd": "#D9822B", "4th": "#C8321E"}
 BALANCE_DEFINITIONS = f"""
 **Balance score** = how close to 50/50 a play caller is in each down & distance, on decision downs only.
@@ -26,9 +25,10 @@ BALANCE_DEFINITIONS = f"""
 4. Flip it: **100 × (1 − 4 × that average)**. 100 = a coin flip in every down & distance; 0 = the same call every time.
 
 **Typical call** says the same thing in football terms: the run/pass split of his typical decision down. A score of
-87.5 is a 68/32 call (the typical gap from 50/50 is √((1 − score/100) / 4)). **Tiers** by typical call: Coin Flip
-(62/38 or closer), Balanced (to 65/35), Average (to 68/32), Leans (to 71/29), Lopsided (beyond). With the formation
-split on, every caller looks about 5 points more lopsided, so the tiers move up 5 points.
+87.5 is a 68/32 call (the typical gap from 50/50 is √((1 − score/100) / 4)). **Tiers** by typical call: Balanced
+(63/37 or closer), Average, Lopsided (beyond 70/30). The cuts are set so only the ends stand out: of every play caller's
+season since 1999, about 13% are Balanced and 10% Lopsided. With the formation split on, every caller looks about 6
+points more lopsided, so the cuts move up to 69/31 and 77/23.
 
 **Points lost** per down: how much each down & distance takes off his score. They add up to 100 minus his score, so
 they show where his balance goes.
@@ -80,14 +80,14 @@ def balance_board_html(g: pd.DataFrame) -> str:
                         f'<span class="q">{r["Guess right"]:.0%}</span></div>'
                         for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
         cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
-                    f'<div class="gl-def">{up.BALANCE_TIER_HELP[name]}</div>{chips}</div>')
+                    f'<div class="gl-def">{up.BALANCE_TIER_HELP[name]}</div><div class="gl-chips">{chips}</div></div>')
     return ui.GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
 
 
 def guess_chart(d: pd.DataFrame, league: float) -> alt.LayerChart:
     """Guess-right rate per play caller as dots, with the league-norms line."""
     order = list(d.sort_values("Guess right")["label"])
-    g = d.assign(tone=np.select([d["Guess right"] <= 0.60, d["Guess right"] >= 0.65], ["easy", "hard"], "mid"))
+    g = d.assign(tone=d["Balance tier"])
     y = alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False))
     x = alt.X("Guess right:Q", title="A defense guessing by down & distance would be right…", axis=alt.Axis(format=".0%"),
               scale=alt.Scale(zero=False, domain=[float(min(g["Guess right"].min(), league)) - 0.02,
@@ -98,7 +98,7 @@ def guess_chart(d: pd.DataFrame, league: float) -> alt.LayerChart:
     stem = base.mark_rule(color="#888780", opacity=0.35).encode(x=alt.X("lo:Q"), x2="Guess right:Q").transform_calculate(
         lo=str(float(min(g["Guess right"].min(), league)) - 0.02))
     dots = base.mark_circle(size=120, opacity=1).encode(x=x, color=alt.Color("tone:N", legend=None, scale=alt.Scale(
-        domain=["easy", "mid", "hard"], range=["#2F8C86", "#888780", "#C8321E"])))
+        domain=list(BALANCE_COLORS), range=list(BALANCE_COLORS.values()))))
     text = base.mark_text(align="left", dx=9, fontSize=11, color=cm.theme_ink()).encode(
         x="Guess right:Q", text=alt.Text("Guess right:Q", format=".0%"))
     rule = alt.Chart(pd.DataFrame({"v": [league]})).mark_rule(color=cm.theme_ink(), strokeDash=[5, 4]).encode(x="v:Q")
@@ -187,7 +187,7 @@ def dd_grid_html(cells: pd.DataFrame, by_formation: bool) -> str:
 
 
 def history_html(caller: str, by_formation: bool, seasons: list[int]) -> str:
-    """'2024: 66/34 Average → 2025: 61/39 Coin Flip → …' for every listed season he called plays (full seasons)."""
+    """'2024: 66/34 Average → 2025: 61/39 Balanced → …' for every listed season he called plays (full seasons)."""
     items = []
     for s in seasons:
         try:
@@ -208,8 +208,8 @@ def history_html(caller: str, by_formation: bool, seasons: list[int]) -> str:
 
 def callout_cards(both: pd.DataFrame) -> str:
     """Coaches where balance and the film index disagree."""
-    a = both[both["Balance tier"].isin(["Coin Flip", "Balanced"]) & both["Tier"].isin(["Open Book", "Readable"])]
-    b = both[both["Balance tier"].isin(["Leans", "Lopsided"]) & both["Tier"].isin(["Mixes It Up", "Poker Face"])]
+    a = both[(both["Balance tier"] == "Balanced") & (both["Tier"] == "Open Book")]
+    b = both[(both["Balance tier"] == "Lopsided") & (both["Tier"] == "Poker Face")]
     cards = []
     for _, r in a.sort_values("Unpredictability index").iterrows():
         cards.append((r, "Balanced, but readable",
@@ -311,8 +311,8 @@ def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snap
     st.altair_chart(guess_chart(d, league_guess), width="stretch")
     st.caption(f"If a defense always guessed his most common call for each decision down, how often would it be right? "
                f"Dashed line = guessing the league's most common call instead ({league_guess:.0%}). Right of it, his "
-               "habits make him easier to call than league norms; left of it, harder. Teal = 60% or less, red = 65% or "
-               "more.")
+               "habits make him easier to call than league norms; left of it, harder. Colors = his tier (teal "
+               "Balanced, gray Average, red Lopsided).")
 
     st.subheader("Where each coach loses balance")
     st.altair_chart(points_lost_chart(cells, d), width="stretch")

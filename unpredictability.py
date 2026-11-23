@@ -260,7 +260,8 @@ def caller_table(d: pd.DataFrame, clues: list[str]) -> pd.DataFrame:
     ok = t["Scored snaps"] >= MIN_SNAPS
     mu, sd = t.loc[ok, "Edge"].mean(), t.loc[ok, "Edge"].std()
     t["Unpredictability index"] = np.where(ok, 50 - 10 * (t["Edge"] - mu) / (sd if sd > 0 else 1), np.nan)
-    t["Profile"] = np.select([~ok, t["Unpredictability index"] >= 60, t["Unpredictability index"] <= 40],
+    t["Profile"] = np.select([~ok, t["Unpredictability index"] > TIER_POKER_FACE,
+                              t["Unpredictability index"] <= TIER_OPEN_BOOK],
                              ["Too few snaps", "Hard to read", "Readable"], "NFL average")
     t["Biggest tell"] = [_biggest_clue(r, clues) for _, r in t.iterrows()]
     return t.sort_values("Unpredictability index", ascending=False, na_position="last").reset_index(drop=True)
@@ -329,13 +330,14 @@ BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & medium", "4th & long", 
 BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd", "3rd", "4th")
                  for dist in dt.DISTANCE_ORDER]
 BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
-BALANCE_TIERS = [(0.62, "Coin Flip"), (0.65, "Balanced"), (0.68, "Average"), (0.71, "Leans"), (1.0, "Lopsided")]
-# Split by shotgun vs under center, every caller looks about 5 points more lopsided (formation tells a lot), so the
-# tiers move up with it; otherwise nearly everyone would be Lopsided.
-BALANCE_TIERS_BY_FORMATION = [(0.67, "Coin Flip"), (0.70, "Balanced"), (0.73, "Average"), (0.76, "Leans"),
-                              (1.0, "Lopsided")]
-BALANCE_TIER_HELP = {"Coin Flip": "Close to 50/50 almost every down.", "Balanced": "Hard to call on most downs.",
-                     "Average": "About as balanced as a typical coach.", "Leans": "Leans one way on several downs.",
+# Three tiers by typical call, cut so only the ends stand out: of every play caller's season since 1999, about 13%
+# are Balanced (63/37 or closer), 10% Lopsided (beyond 70/30), and the rest Average.
+BALANCE_TIERS = [(0.63, "Balanced"), (0.70, "Average"), (1.0, "Lopsided")]
+# Split by shotgun vs under center, every caller looks about 6 points more lopsided (formation tells a lot), so the
+# cuts move up with it (same shares, 2014-2025); otherwise nearly everyone would be Lopsided.
+BALANCE_TIERS_BY_FORMATION = [(0.69, "Balanced"), (0.77, "Average"), (1.0, "Lopsided")]
+BALANCE_TIER_HELP = {"Balanced": "Close to 50/50 on most downs: among the hardest to call.",
+                     "Average": "About as balanced as a typical coach.",
                      "Lopsided": "Easy to call by down & distance."}
 
 
@@ -471,9 +473,13 @@ def balance_verdict(r: pd.Series, cells: pd.DataFrame, league_third: float | Non
 
 
 # ---- Plain-language summary ("At a glance" view) ----------------------------------------------------------------
-TIERS = [(40, "Open Book"), (46, "Readable"), (54, "Average"), (60, "Mixes It Up"), (np.inf, "Poker Face")]
-TIER_HELP = {"Open Book": "His film clearly helps a defense.", "Readable": "His film helps a bit more than most.",
-             "Average": "About what a typical coach gives away.", "Mixes It Up": "His film barely helps a defense.",
+# Three tiers by index, cut so only the ends stand out: of every play caller's season since 1999, about 10% are Open
+# Book (38 or less), 10% Poker Face (over 58), and the rest Average. (The index has a long readable tail, so the cuts
+# aren't the same distance from 50.)
+TIER_OPEN_BOOK, TIER_POKER_FACE = 38, 58
+TIERS = [(TIER_OPEN_BOOK, "Open Book"), (TIER_POKER_FACE, "Average"), (np.inf, "Poker Face")]
+TIER_HELP = {"Open Book": "His film clearly helps a defense.",
+             "Average": "His film helps about as much as a typical coach's.",
              "Poker Face": "His film doesn't help, or it fools you."}
 TELL_MIN_GAP = 0.07       # a tell must differ from the average team by this much...
 TELL_MIN_SNAPS = 20       # ...on at least this many snaps
@@ -560,7 +566,7 @@ def verdict(r: pd.Series, tl: list[dict], ml: list[dict]) -> str:
         tell = (f" {t['phrase']}, he {verb} {t['rate']:.0%} of the time; an average team would {verb[:-1]} "
                 f"{t['league']:.0%}.")
     name = tier(r["Unpredictability index"])
-    if name in ("Open Book", "Readable"):
+    if name == "Open Book":
         if r["Lean edge"] >= r["Look edge"] and abs(r["Lean"]) >= 0.04:
             word = "pass" if r["Lean"] > 0 else "run"
             return (f"{last} {'throws' if r['Lean'] > 0 else 'runs'} more than an average team would in almost every "
@@ -578,8 +584,6 @@ def verdict(r: pd.Series, tl: list[dict], ml: list[dict]) -> str:
         phrase = m["phrase"][0].lower() + m["phrase"][1:]
         miss = (f" His earlier games said he'd throw {m['film']:.0%} of the time {phrase}; in the games that "
                 f"followed he threw {m['actual']:.0%}.")
-    if name == "Mixes It Up":
-        return f"{last}'s film barely helps. The habits he showed in earlier games mostly didn't hold up.{miss}"
     return f"{last}'s film works against you: what he did in earlier games isn't what he did next.{miss}"
 
 

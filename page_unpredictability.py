@@ -219,8 +219,7 @@ Positive = the film read him there. Negative = his film said one thing and he di
 """
 
 # ---- At a glance view -----------------------------------------------------------------------------------------
-TIER_COLORS = {"Open Book": "#C8321E", "Readable": "#D9822B", "Average": "#8A949A", "Mixes It Up": "#2F8C86",
-               "Poker Face": "#3B5EA8"}
+TIER_COLORS = {"Open Book": "#C8321E", "Average": "#8A949A", "Poker Face": "#3B5EA8"}
 def anchors_html(g: pd.DataFrame) -> str:
     def one(r, label):
         why = (f"film gives away ~{r['Plays given away']:.1f} plays a game" if r["Plays given away"] > 0
@@ -240,7 +239,7 @@ def board_html(g: pd.DataFrame) -> str:
         chips = "".join(f'<div class="gl-chip">{ui.badge_html(r)}<span>{r["Play caller"]}</span></div>'
                         for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
         cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
-                    f'<div class="gl-def">{up.TIER_HELP[name]}</div>{chips}</div>')
+                    f'<div class="gl-def">{up.TIER_HELP[name]}</div><div class="gl-chips">{chips}</div></div>')
     return ui.GLANCE_CSS + f'<div class="gl-board">{"".join(cols)}</div>'
 
 
@@ -446,8 +445,8 @@ def render_glance(ranked: pd.DataFrame, d_snaps: pd.DataFrame, clues: list[str],
                "and distance, field position, score, formation, personnel, motion, backs in the backfield, and the "
                "last call. One knows only how the whole NFL plays; the other also studies this coach's earlier games "
                "(never later ones). Plays a game his film gives away = how much of the guessing studying him removes, "
-               "counted in plays. Tiers by index: 40 or less = Open Book, 40-46 Readable, 46-54 Average, 54-60 Mixes It "
-               "Up, over 60 Poker Face.")
+               "counted in plays. Tiers by index: 38 or less = Open Book, over 58 = Poker Face, everyone between = "
+               "Average (about 10%, 80% and 10% of play callers' seasons since 1999).")
 
 
 # ---- Page ----------------------------------------------------------------------------------------------------
@@ -520,9 +519,9 @@ if view == "At a glance":
 
 counts = ranked["Profile"].value_counts()
 c = st.columns(5)
-c[0].metric("Hard to read", int(counts.get("Hard to read", 0)), help="Index 60 or higher")
+c[0].metric("Hard to read", int(counts.get("Hard to read", 0)), help=f"Index over {up.TIER_POKER_FACE}")
 c[1].metric("NFL average", int(counts.get("NFL average", 0)))
-c[2].metric("Readable", int(counts.get("Readable", 0)), help="Index 40 or lower")
+c[2].metric("Readable", int(counts.get("Readable", 0)), help=f"Index {up.TIER_OPEN_BOOK} or lower")
 c[3].metric("Film edge, average caller", f"{ranked['Film edge'].mean():+.2f}",
             help="Bits per 100 snaps a defense gains by studying an average play caller's film.")
 c[4].metric("Reliability", "–" if pd.isna(rel) else f"{rel:.2f}",
