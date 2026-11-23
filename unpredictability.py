@@ -332,12 +332,12 @@ BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd"
 BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
 # Three tiers by "Guess right" (how often a defense guessing his most common call in each down & distance is right),
 # the number shown next to every name, cut so only the ends stand out: of every play caller's season since 1999,
-# 14% are Balanced (59% or less), 8% Lopsided (67% or more), and the rest Average. Cut on the whole percent shown, so
+# 25% are Balanced (60% or less), 8% Lopsided (67% or more), and the rest Average. Cut on the whole percent shown, so
 # two coaches showing the same number are always in the same tier.
-BALANCE_TIERS = [(59, "Balanced"), (66, "Average"), (100, "Lopsided")]
+BALANCE_TIERS = [(60, "Balanced"), (66, "Average"), (100, "Lopsided")]
 # Split by shotgun vs under center, a defense guesses everyone 7 to 9 points better (formation tells a lot), so the
-# cuts move up with it (2014 on: 8% at each end): 65% or less, 76% or more.
-BALANCE_TIERS_BY_FORMATION = [(65, "Balanced"), (75, "Average"), (100, "Lopsided")]
+# cuts move up with it (2014 on: 21% Balanced, 8% Lopsided): 67% or less, 76% or more.
+BALANCE_TIERS_BY_FORMATION = [(67, "Balanced"), (75, "Average"), (100, "Lopsided")]
 BALANCE_TIER_HELP = {"Balanced": "Close to 50/50 on most downs: among the hardest to call.",
                      "Average": "About as balanced as a typical coach.",
                      "Lopsided": "Easy to call by down & distance."}

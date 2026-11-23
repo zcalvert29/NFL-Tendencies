@@ -28,9 +28,9 @@ BALANCE_DEFINITIONS = f"""
 87.5 is a 68/32 call (the typical gap from 50/50 is √((1 − score/100) / 4)). **Guess right** is the plainest version:
 if a defense always guessed his most common call in each down & distance, how often it would be right.
 
-**Tiers** go by guess right, the number next to every name: Balanced (59% or less), Average, Lopsided (67% or more),
-set so only the ends stand out (of play callers' seasons since 1999, about 14% Balanced and 8% Lopsided). With the
-formation split on, a defense guesses everyone 7 to 9 points better, so the cuts move up to 65% and 76%.
+**Tiers** go by guess right, the number next to every name: Balanced (60% or less), Average, Lopsided (67% or more).
+Of play callers' seasons since 1999, about 25% are Balanced and 8% Lopsided. With the formation split on, a defense
+guesses everyone 7 to 9 points better, so the cuts move up to 67% and 76%.
 
 **Points lost** per down: how much each down & distance takes off his score. They add up to 100 minus his score, so
 they show where his balance goes.
