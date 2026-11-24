@@ -330,14 +330,14 @@ BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & medium", "4th & long", 
 BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd", "3rd", "4th")
                  for dist in dt.DISTANCE_ORDER]
 BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
-# Three tiers by "Guess right" (how often a defense guessing his most common call in each down & distance is right),
-# the number shown next to every name, cut so only the ends stand out: of every play caller's season since 1999,
-# 25% are Balanced (60% or less), 8% Lopsided (67% or more), and the rest Average. Cut on the whole percent shown, so
-# two coaches showing the same number are always in the same tier.
-BALANCE_TIERS = [(60, "Balanced"), (66, "Average"), (100, "Lopsided")]
-# Split by shotgun vs under center, a defense guesses everyone 7 to 9 points better (formation tells a lot), so the
-# cuts move up with it (2014 on: 21% Balanced, 8% Lopsided): 67% or less, 76% or more.
-BALANCE_TIERS_BY_FORMATION = [(67, "Balanced"), (75, "Average"), (100, "Lopsided")]
+# Three tiers by balance score, the number shown next to every name, cut so only the ends stand out: of every play
+# caller's season since 1999, 29% are Balanced (92 or higher), 6% Lopsided (83 or lower), and the rest Average. Cut on
+# the whole number shown, so two coaches showing the same score are always in the same tier. Listed most balanced
+# first: (lowest score in the tier, name).
+BALANCE_TIERS = [(92, "Balanced"), (84, "Average"), (-np.inf, "Lopsided")]
+# Split by shotgun vs under center, every caller scores about 10 points lower (formation tells a lot), so the cuts move
+# down with it (2014 on: 23% Balanced, 8% Lopsided): 84 or higher, 69 or lower.
+BALANCE_TIERS_BY_FORMATION = [(84, "Balanced"), (70, "Average"), (-np.inf, "Lopsided")]
 BALANCE_TIER_HELP = {"Balanced": "Close to 50/50 on most downs: among the hardest to call.",
                      "Average": "About as balanced as a typical coach.",
                      "Lopsided": "Easy to call by down & distance."}
@@ -350,9 +350,9 @@ def typical_split(score: float) -> float:
     return 0.5 + np.sqrt(max(0.0, (1 - score / 100) / 4))
 
 
-def balance_tier(guess_right: float, by_formation: bool = False) -> str:
-    pct = int(f"{guess_right * 100:.0f}")      # the whole percent the page shows
-    return next(name for top, name in (BALANCE_TIERS_BY_FORMATION if by_formation else BALANCE_TIERS) if pct <= top)
+def balance_tier(score: float, by_formation: bool = False) -> str:
+    shown = int(f"{score:.0f}")      # the whole number the page shows
+    return next(name for low, name in (BALANCE_TIERS_BY_FORMATION if by_formation else BALANCE_TIERS) if shown >= low)
 
 
 def split_text(hi: float) -> str:
@@ -380,7 +380,7 @@ def balance_cells(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
 
 
 def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
-    """One row per stint: the balance score and its typical split, the tier (by Guess right), the raw (uncorrected) score, the cells
+    """One row per stint: the balance score and its typical split and tier, the raw (uncorrected) score, the cells
     that cost him the most and the least (8+ snaps), and "Guess right": how often a defense that always guessed his
     most common call in each decision-down cell would have been right."""
     c = balance_cells(d, by_formation)
@@ -400,8 +400,8 @@ def balance_table(d: pd.DataFrame, by_formation: bool = False) -> pd.DataFrame:
                      "Pass rate": (g["Snaps"] * g["Pass rate"]).sum() / n,
                      "Most lopsided": "" if worst is None else f"{worst['cell']}: {worst['Pass rate']:.0%} pass",
                      "Most balanced": "" if best is None else f"{best['cell']}: {best['Pass rate']:.0%} pass",
-                     "Guess right": (guess := (g["Snaps"] * np.maximum(g["Pass rate"], 1 - g["Pass rate"])).sum() / n),
-                     "Balance tier": balance_tier(guess, by_formation),
+                     "Guess right": (g["Snaps"] * np.maximum(g["Pass rate"], 1 - g["Pass rate"])).sum() / n,
+                     "Balance tier": balance_tier(score, by_formation),
                      "EPA/play": epa.get((team, caller), np.nan)})
     t = pd.DataFrame(rows)
     return t.sort_values("Balance score", ascending=False).reset_index(drop=True) if len(t) else t
