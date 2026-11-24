@@ -1,5 +1,5 @@
 """
-Sequencing tab: what the offense calls after each kind of snap (the Dowling app's "What they call after..." view),
+Sequencing tab: what the offense calls after each kind of snap ("What they call after..."),
 with PROE and the NFL's pass rate after the same kind of snap.
 """
 from __future__ import annotations

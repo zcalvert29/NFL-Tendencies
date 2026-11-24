@@ -47,7 +47,7 @@ FTN_COLUMNS = ["is_motion", "is_play_action", "is_rpo", "is_screen_pass", "n_off
 PARTICIPATION_COLUMNS = ["offense_formation", "offense_personnel", "defenders_in_box", "defense_coverage_type",
                          "defense_man_zone_type"]
 
-# Same buckets as the Dowling app.
+# Yards-to-go buckets used on every page.
 DISTANCE_ORDER = ["Short (1-3 yds)", "Medium (4-6 yds)", "Long (7-10 yds)", "Extra Long (11+ yds)"]
 DOWN_NAMES = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
 NEUTRAL_MARGIN = 7           # score within this many points, and not the last 2 minutes of a half

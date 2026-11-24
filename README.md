@@ -1,8 +1,7 @@
 # NFL Tendencies
 
-The [Dowling Catholic Football Analytics](https://github.com/zcalvert29/Dowling-Football) app's **Scout Opposing
-Offense** page, rebuilt for any NFL offense on [nflfastR](https://www.nflfastr.com/) play-by-play. Same views,
-colors, and tendency grading, with two additions throughout:
+A scouting app for any NFL offense, built on [nflfastR](https://www.nflfastr.com/) play-by-play: how a team calls
+run and pass by down, distance, formation, personnel and situation. Two things run through every view:
 
 - **PROE (pass rate over expected):** how much more often a team throws than an average NFL team would in the exact
   same spots (down, distance, field position, score, time, timeouts), from nflfastR's `xpass` model.
@@ -43,8 +42,8 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   are playing it as the first of two downs, ready to go for it on 4th.
 - **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
   call). **Tiers** go by the balance score, the number next to every name:
-  Balanced (92 or higher), Average, Lopsided (83 or lower); of every play caller's season since 1999, about 29% are
-  Balanced and 6% Lopsided.
+  Balanced (90 or higher), Average, Lopsided (83 or lower); of every play caller's season since 1999, about half are
+  Balanced (fewer in recent seasons) and 6% Lopsided.
 - **How often would a defense guess right?** If a defense always guessed his most common call in each down &
   distance, the share of decision downs it would get right (Johnson 57% in 2025, Kingsbury 69%, the league's own
   most common call 61%). Shown on the coach cards and as a dot chart against the league line.
@@ -65,7 +64,7 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   across every such coach, whether his offense did better in seasons he was more balanced than his own norm (no).
 - **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
   what a defense sees before the snap. Every caller scores about 10 points lower that way, so the tier cuts move down
-  (84 and 69).
+  (80 and 69).
 - **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
   gap between coaches is still noise. The balance score and the film index barely agree (r ≈ 0): McVay is an average
   66/34 caller by down & distance but the easiest coach to read on film.
@@ -285,14 +284,13 @@ Optional: `python data.py 2024 2025 2026` downloads seasons ahead of time. Run t
 
 ## Definitions
 
-- **EPA:** expected points added (nflfastR). **Success:** a play with positive EPA (nflfastR's definition; the
-  Dowling app uses the 40/70/100% yardage rule).
+- **EPA:** expected points added (nflfastR). **Success:** a play with positive EPA (nflfastR's definition).
 - **Explosive:** a run of 10+ or a pass of 20+ yards.
 - **Personnel:** RBs (incl. FBs) then TEs, so "11" = 1 RB, 1 TE, 3 WR; "+OL" = an extra lineman.
-- **Tell / lean / small sample:** how much to trust a 70%+ split, graded by the Wilson lower bound (90%), as in the
-  Dowling app.
+- **Tell / lean / small sample:** how much to trust a 70%+ split, graded by the Wilson lower bound (90%).
 - **Colors:** from the scouted offense's side. With an NFL column, green/red = clearly better/worse than the NFL in
-  that row. Without one, the Dowling offense rule. Rows under 5 plays aren't colored; rows under 10 are grayed.
+  that row. Without one, green = clearly above the table's average, and red only for results bad on their own
+  (negative EPA or under a 40% success rate). Rows under 5 plays aren't colored; rows under 10 are grayed.
 
 ## Author
 **Zack Calvert** · [LinkedIn](https://linkedin.com/in/zack-calvert) · [Substack](https://zcalvert.substack.com)

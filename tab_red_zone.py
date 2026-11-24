@@ -75,8 +75,7 @@ def _band_table(rz: pd.DataFrame, lg_rz: pd.DataFrame) -> pd.DataFrame:
 
 
 def _call(d: pd.DataFrame) -> pd.Series:
-    """'Run left end', 'Pass middle', ...: nflfastR has no play calls, so direction stands in (as in the Dowling
-    app when OFF PLAY isn't tagged)."""
+    """'Run left end', 'Pass middle', ...: nflfastR has no play calls, so direction stands in."""
     run = ("Run " + d["Run Lane"].str.lower()).fillna("Run (no direction, mostly QB runs)")
     pas = (("Pass " + d["Pass Direction"].str.lower()).fillna("Sack, scramble, or no target")
            if cm.has_pass_direction(d) else pd.Series("Pass (direction not charted before 2006)", index=d.index))
