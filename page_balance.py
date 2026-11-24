@@ -28,9 +28,9 @@ BALANCE_DEFINITIONS = f"""
 87.5 is a 68/32 call (the typical gap from 50/50 is √((1 − score/100) / 4)). **Guess right** is the plainest version:
 if a defense always guessed his most common call in each down & distance, how often it would be right.
 
-**Tiers** go by guess right, the number next to every name: Balanced (60% or less), Average, Lopsided (67% or more).
-Of play callers' seasons since 1999, about 25% are Balanced and 8% Lopsided. With the formation split on, a defense
-guesses everyone 7 to 9 points better, so the cuts move up to 67% and 76%.
+**Tiers** go by the balance score, the number next to every name: Balanced (92 or higher), Average, Lopsided (83 or
+lower). Of play callers' seasons since 1999, about 29% are Balanced and 6% Lopsided. With the formation split on, every
+caller scores about 10 points lower, so the cuts move down to 84 and 69.
 
 **Points lost** per down: how much each down & distance takes off his score. They add up to 100 minus his score, so
 they show where his balance goes.
@@ -67,9 +67,9 @@ def balance_anchors_html(g: pd.DataFrame) -> str:
     def one(r, label):
         return (f'<div class="gl-anchor">{ui.badge_html(r, 52)}<div style="min-width:0">'
                 f'<div class="gl-lbl" style="color:{BALANCE_COLORS[r["Balance tier"]]}">{label}</div>'
-                f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · a defense guessing by '
-                f'down & distance is right {r["Guess right"]:.0%} of the time</div></div></div>')
-    s = g.sort_values("Guess right")
+                f'<div class="gl-nm">{r["Play caller"]}</div><div class="gl-sub">{r["Team name"]} · balance score '
+                f'{r["Balance score"]:.0f}, a {r["Typical call"]} call</div></div></div>')
+    s = g.sort_values("Balance score", ascending=False)
     return ui.GLANCE_CSS + f'<div class="gl-row">{one(s.iloc[0], "Most balanced")}{one(s.iloc[-1], "Most lopsided")}</div>'
 
 
@@ -77,9 +77,9 @@ def balance_board_html(g: pd.DataFrame) -> str:
     cols = []
     for _, name in up.BALANCE_TIERS:
         color = BALANCE_COLORS[name]
-        rows = g[g["Balance tier"] == name].sort_values("Guess right")
+        rows = g[g["Balance tier"] == name].sort_values("Balance score", ascending=False)
         chips = "".join(f'<div class="gl-chip">{ui.badge_html(r)}<span>{r["Play caller"]}</span>'
-                        f'<span class="q">{r["Guess right"]:.0%}</span></div>'
+                        f'<span class="q">{r["Balance score"]:.0f}</span></div>'
                         for _, r in rows.iterrows()) or '<div class="gl-def">Nobody this season</div>'
         cols.append(f'<div class="gl-col" style="border-top-color:{color}"><h4 style="color:{color}">{name}</h4>'
                     f'<div class="gl-def">{up.BALANCE_TIER_HELP[name]}</div><div class="gl-chips">{chips}</div></div>')
@@ -89,7 +89,7 @@ def balance_board_html(g: pd.DataFrame) -> str:
 def guess_chart(d: pd.DataFrame, league: float) -> alt.LayerChart:
     """Guess-right rate per play caller as dots, with the league-norms line."""
     order = list(d.sort_values("Guess right")["label"])
-    g = d.assign(tone=d["Balance tier"])
+    g = d
     y = alt.Y("label:N", sort=order, title=None, axis=alt.Axis(labelOverlap=False))
     x = alt.X("Guess right:Q", title="A defense guessing by down & distance would be right…", axis=alt.Axis(format=".0%"),
               scale=alt.Scale(zero=False, domain=[float(min(g["Guess right"].min(), league)) - 0.02,
@@ -99,8 +99,7 @@ def guess_chart(d: pd.DataFrame, league: float) -> alt.LayerChart:
     base = alt.Chart(g).encode(y=y, tooltip=tip)
     stem = base.mark_rule(color="#888780", opacity=0.35).encode(x=alt.X("lo:Q"), x2="Guess right:Q").transform_calculate(
         lo=str(float(min(g["Guess right"].min(), league)) - 0.02))
-    dots = base.mark_circle(size=120, opacity=1).encode(x=x, color=alt.Color("tone:N", legend=None, scale=alt.Scale(
-        domain=list(BALANCE_COLORS), range=list(BALANCE_COLORS.values()))))
+    dots = base.mark_circle(size=120, opacity=1, color=BALANCE_COLORS["Average"]).encode(x=x)
     text = base.mark_text(align="left", dx=9, fontSize=11, color=cm.theme_ink()).encode(
         x="Guess right:Q", text=alt.Text("Guess right:Q", format=".0%"))
     rule = alt.Chart(pd.DataFrame({"v": [league]})).mark_rule(color=cm.theme_ink(), strokeDash=[5, 4]).encode(x="v:Q")
@@ -189,7 +188,7 @@ def dd_grid_html(cells: pd.DataFrame, by_formation: bool) -> str:
 
 
 def history_html(caller: str, by_formation: bool, seasons: list[int]) -> str:
-    """'2024: 64% Average → 2025: 59% Balanced → …' (guess right) for every listed season he called plays."""
+    """'2024: 88 Average → 2025: 93 Balanced → …' (balance score) for every listed season he called plays."""
     items = []
     for s in seasons:
         try:
@@ -199,7 +198,7 @@ def history_html(caller: str, by_formation: bool, seasons: list[int]) -> str:
         row = t[t["Play caller"] == caller]
         if len(row):
             r = row.sort_values("Snaps").iloc[-1]
-            items.append(f'<span><b>{s}</b> {r["Guess right"]:.0%} '
+            items.append(f'<span><b>{s}</b> {r["Balance score"]:.0f} '
                          f'<span style="color:{BALANCE_COLORS[r["Balance tier"]]};font-weight:600">{r["Balance tier"]}</span>'
                          f' <span style="opacity:.6">({r["Team"]})</span></span>')
     if len(items) < 2:
@@ -306,15 +305,16 @@ def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snap
     st.html(balance_anchors_html(d))
     st.subheader("Every play caller, by tier")
     st.html(balance_board_html(d))
-    st.caption("The number next to each name: how often a defense that always guessed his most common call for each "
-               "down & distance would be right.")
+    cuts = up.BALANCE_TIERS_BY_FORMATION if by_formation else up.BALANCE_TIERS
+    st.caption(f"The number next to each name: his balance score (100 = a coin flip on every decision down). Balanced = "
+               f"{cuts[0][0]:.0f} or higher, Lopsided = {cuts[1][0] - 1:.0f} or lower"
+               + (" (formation split on)." if by_formation else "."))
 
     st.subheader("How often would a defense guess right?")
     st.altair_chart(guess_chart(d, league_guess), width="stretch")
     st.caption(f"If a defense always guessed his most common call for each decision down, how often would it be right? "
                f"Dashed line = guessing the league's most common call instead ({league_guess:.0%}). Right of it, his "
-               "habits make him easier to call than league norms; left of it, harder. Colors = his tier (teal "
-               "Balanced, gray Average, red Lopsided).")
+               "habits make him easier to call than league norms; left of it, harder.")
 
     st.subheader("Where each coach loses balance")
     st.altair_chart(points_lost_chart(cells, d), width="stretch")
@@ -370,8 +370,8 @@ def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snap
                              more="more balanced", per=5, unit="balance points", info=info, key="bal_hist")
 
     st.subheader("Scouting card")
-    order = d.sort_values("Guess right")
-    labels = {f"{r['Play caller']} ({r['Team']}) · {r['Guess right']:.0%} · {r['Balance tier']}": i
+    order = d.sort_values("Balance score", ascending=False)
+    labels = {f"{r['Play caller']} ({r['Team']}) · {r['Balance score']:.0f} · {r['Balance tier']}": i
               for i, r in order.iterrows()}
     pick = st.selectbox("Play caller", list(labels), key=f"up_bal_pick_{season}",
                         help="Sorted from most balanced to most lopsided.")
@@ -383,9 +383,10 @@ def render_balance(season: int, weeks: tuple[int, int] | None, by: str, min_snap
             f'{season} · {int(r["Snaps"])} decision-down snaps</div></div>'
             f'<span class="gl-pill" style="background:{color}">{r["Balance tier"]}</span></div>'
             f'<p class="gl-verdict">{up.balance_verdict(r, mine, league_third)}</p>'
-            f'<div class="gl-stat"><span class="gl-n" style="color:{color}">{r["Guess right"]:.0%}</span>'
-            f'<span>of his decision downs a defense guessing by down & distance would call right. The average coach: '
-            f'{d["Guess right"].mean():.0%}. His typical down: {r["Typical call"]}.</span></div>'
+            f'<div class="gl-stat"><span class="gl-n" style="color:{color}">{r["Balance score"]:.0f}</span>'
+            f'<span>balance score, a {r["Typical call"]} call on his typical decision down. The average coach: '
+            f'{d["Balance score"].mean():.0f}. A defense guessing by down & distance would be right '
+            f'{r["Guess right"]:.0%} of the time.</span></div>'
             f'{history_html(r["Play caller"], by_formation, listed_seasons) if by == "caller" else ""}</div>')
     st.markdown(f"**{r['Play caller']}'s decision downs**")
     st.html(dd_grid_html(mine, by_formation))

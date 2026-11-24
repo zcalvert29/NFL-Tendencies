@@ -42,12 +42,12 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   throws) and 4th & 4+ (a handful of snaps, nearly all passes). 3rd & medium stays on purpose: coaches who run there
   are playing it as the first of two downs, ready to go for it on 4th.
 - **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
-  call). **Tiers** go by the guess-right rate below, the number next to every name:
-  Balanced (60% or less), Average, Lopsided (67% or more); of every play caller's season since 1999, about 25% are
-  Balanced and 8% Lopsided.
+  call). **Tiers** go by the balance score, the number next to every name:
+  Balanced (92 or higher), Average, Lopsided (83 or lower); of every play caller's season since 1999, about 29% are
+  Balanced and 6% Lopsided.
 - **How often would a defense guess right?** If a defense always guessed his most common call in each down &
   distance, the share of decision downs it would get right (Johnson 57% in 2025, Kingsbury 69%, the league's own
-  most common call 61%). Shown next to each name on the tier board and as a dot chart against the league line.
+  most common call 61%). Shown on the coach cards and as a dot chart against the league line.
 - **On the page:** the two ends of the scale; a tier board; **where each coach loses balance** (points lost per down &
   distance, adding up to 100 minus his score); **3rd & medium: one down or two?** (pass rate there against the league;
   8+ points below = a two-down set); **balanced isn't the same as hard to read** (callouts where balance and the film
@@ -64,8 +64,8 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
 - **A coach over the years:** any play caller with 3+ seasons, his balance and his offense season by season; and,
   across every such coach, whether his offense did better in seasons he was more balanced than his own norm (no).
 - **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
-  what a defense sees before the snap. A defense guesses every caller 7 to 9 points better that way, so the tier cuts move up
-  (67% and 76%).
+  what a defense sees before the snap. Every caller scores about 10 points lower that way, so the tier cuts move down
+  (84 and 69).
 - **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
   gap between coaches is still noise. The balance score and the film index barely agree (r ≈ 0): McVay is an average
   66/34 caller by down & distance but the easiest coach to read on film.

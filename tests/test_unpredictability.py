@@ -152,12 +152,12 @@ def test_typical_split_and_tiers():
     assert up.typical_split(100) == 0.5
     assert abs(up.typical_split(87.5) - 0.6768) < 1e-3          # a 68/32 call
     assert up.split_text(0.6768) == "68/32"
-    # Tiers go by guess right, on the whole percent shown: 60% Balanced, 61-66% Average, 67% Lopsided.
-    assert [up.balance_tier(g) for g in (0.55, 0.6049, 0.6051, 0.6649, 0.6651, 0.75)] == [
+    # Tiers go by the balance score, on the whole number shown: 92+ Balanced, 84-91 Average, 83 or lower Lopsided.
+    assert [up.balance_tier(x) for x in (99, 91.5, 91.49, 83.5, 83.49, 75)] == [
         "Balanced", "Balanced", "Average", "Average", "Lopsided", "Lopsided"]
-    assert up.balance_tier(0.67, by_formation=True) == "Balanced"  # cuts move up with the formation split
-    assert up.balance_tier(0.75, by_formation=True) == "Average"
-    assert up.balance_tier(0.76, by_formation=True) == "Lopsided"
+    assert up.balance_tier(84, by_formation=True) == "Balanced"  # cuts move down with the formation split
+    assert up.balance_tier(70, by_formation=True) == "Average"
+    assert up.balance_tier(69, by_formation=True) == "Lopsided"
 
 
 def test_points_lost_add_up_and_formation_split():
