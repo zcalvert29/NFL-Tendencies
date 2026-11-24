@@ -1,8 +1,7 @@
 # NFL Tendencies
 
-The [Dowling Catholic Football Analytics](https://github.com/zcalvert29/Dowling-Football) app's **Scout Opposing
-Offense** page, rebuilt for any NFL offense on [nflfastR](https://www.nflfastr.com/) play-by-play. Same views,
-colors, and tendency grading, with two additions throughout:
+A scouting app for any NFL offense, built on [nflfastR](https://www.nflfastr.com/) play-by-play: how a team calls
+run and pass by down, distance, formation, personnel and situation. Two things run through every view:
 
 - **PROE (pass rate over expected):** how much more often a team throws than an average NFL team would in the exact
   same spots (down, distance, field position, score, time, timeouts), from nflfastR's `xpass` model.
@@ -285,14 +284,13 @@ Optional: `python data.py 2024 2025 2026` downloads seasons ahead of time. Run t
 
 ## Definitions
 
-- **EPA:** expected points added (nflfastR). **Success:** a play with positive EPA (nflfastR's definition; the
-  Dowling app uses the 40/70/100% yardage rule).
+- **EPA:** expected points added (nflfastR). **Success:** a play with positive EPA (nflfastR's definition).
 - **Explosive:** a run of 10+ or a pass of 20+ yards.
 - **Personnel:** RBs (incl. FBs) then TEs, so "11" = 1 RB, 1 TE, 3 WR; "+OL" = an extra lineman.
-- **Tell / lean / small sample:** how much to trust a 70%+ split, graded by the Wilson lower bound (90%), as in the
-  Dowling app.
+- **Tell / lean / small sample:** how much to trust a 70%+ split, graded by the Wilson lower bound (90%).
 - **Colors:** from the scouted offense's side. With an NFL column, green/red = clearly better/worse than the NFL in
-  that row. Without one, the Dowling offense rule. Rows under 5 plays aren't colored; rows under 10 are grayed.
+  that row. Without one, green = clearly above the table's average, and red only for results bad on their own
+  (negative EPA or under a 40% success rate). Rows under 5 plays aren't colored; rows under 10 are grayed.
 
 ## Author
 **Zack Calvert** · [LinkedIn](https://linkedin.com/in/zack-calvert) · [Substack](https://zcalvert.substack.com)
