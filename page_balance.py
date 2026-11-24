@@ -49,10 +49,17 @@ differences, 0 = all noise).
 """
 
 
-@st.cache_data(show_spinner="Measuring balance…", ttl=dt.REFRESH_HOURS * 3600)
 def balance(season: int, weeks: tuple[int, int] | None, by: str, by_formation: bool = False):
     """(caller table, per-cell table, split-half reliability, the league's 3rd & medium pass rate, how often guessing
-    the league's most common call in each cell would be right)."""
+    the league's most common call in each cell would be right). The tier is set here, outside the cache, so a change
+    to the tier cuts shows up at once instead of after the cached tables expire."""
+    t, *rest = _balance(season, weeks, by, by_formation)
+    t = t.assign(**{"Balance tier": t["Balance score"].map(lambda v: up.balance_tier(v, by_formation))})
+    return (t, *rest)
+
+
+@st.cache_data(show_spinner="Measuring balance…", ttl=dt.REFRESH_HOURS * 3600)
+def _balance(season: int, weeks: tuple[int, int] | None, by: str, by_formation: bool = False):
     d = up.sample(ui.plays(season), season, weeks)
     if by == "team":
         d["caller"] = d["posteam"]
