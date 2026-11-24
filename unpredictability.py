@@ -330,14 +330,15 @@ BALANCE_SKIP = ("3rd & long", "3rd & extra long", "4th & medium", "4th & long", 
 BALANCE_CELLS = [f"{dn} & {dist.split(' (')[0].lower()}" for dn in ("1st", "2nd", "3rd", "4th")
                  for dist in dt.DISTANCE_ORDER]
 BALANCE_CELLS = [c for c in BALANCE_CELLS if c not in BALANCE_SKIP]
-# Three tiers by balance score, the number shown next to every name, cut so only the ends stand out: of every play
-# caller's season since 1999, 29% are Balanced (92 or higher), 6% Lopsided (83 or lower), and the rest Average. Cut on
+# Three tiers by balance score, the number shown next to every name: of every play caller's season since 1999, 50% are
+# Balanced (90 or higher; fewer lately, as offenses have grown more lopsided), 6% Lopsided (83 or lower), and the rest
+# Average. Cut on
 # the whole number shown, so two coaches showing the same score are always in the same tier. Listed most balanced
 # first: (lowest score in the tier, name).
-BALANCE_TIERS = [(92, "Balanced"), (84, "Average"), (-np.inf, "Lopsided")]
+BALANCE_TIERS = [(90, "Balanced"), (84, "Average"), (-np.inf, "Lopsided")]
 # Split by shotgun vs under center, every caller scores about 10 points lower (formation tells a lot), so the cuts move
-# down with it (2014 on: 23% Balanced, 8% Lopsided): 84 or higher, 69 or lower.
-BALANCE_TIERS_BY_FORMATION = [(84, "Balanced"), (70, "Average"), (-np.inf, "Lopsided")]
+# down with it (2014 on: 47% Balanced, 8% Lopsided): 80 or higher, 69 or lower.
+BALANCE_TIERS_BY_FORMATION = [(80, "Balanced"), (70, "Average"), (-np.inf, "Lopsided")]
 BALANCE_TIER_HELP = {"Balanced": "Close to 50/50 on most downs: among the hardest to call.",
                      "Average": "About as balanced as a typical coach.",
                      "Lopsided": "Easy to call by down & distance."}

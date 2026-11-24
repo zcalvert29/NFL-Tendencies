@@ -43,8 +43,8 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   are playing it as the first of two downs, ready to go for it on 4th.
 - **Typical call:** the score in football terms, the run/pass split of his typical decision down (87.5 = a 68/32
   call). **Tiers** go by the balance score, the number next to every name:
-  Balanced (92 or higher), Average, Lopsided (83 or lower); of every play caller's season since 1999, about 29% are
-  Balanced and 6% Lopsided.
+  Balanced (90 or higher), Average, Lopsided (83 or lower); of every play caller's season since 1999, about half are
+  Balanced (fewer in recent seasons) and 6% Lopsided.
 - **How often would a defense guess right?** If a defense always guessed his most common call in each down &
   distance, the share of decision downs it would get right (Johnson 57% in 2025, Kingsbury 69%, the league's own
   most common call 61%). Shown on the coach cards and as a dot chart against the league line.
@@ -65,7 +65,7 @@ For each down & distance, his pass rate's squared gap from 50%, minus the part a
   across every such coach, whether his offense did better in seasons he was more balanced than his own norm (no).
 - **Split by shotgun / under center** (sidebar toggle) scores each down separately from each formation, closer to
   what a defense sees before the snap. Every caller scores about 10 points lower that way, so the tier cuts move down
-  (84 and 69).
+  (80 and 69).
 - **Reliability** (odd vs even games): 0.75 in 2024, 0.40 in 2025; early in a season the page warns that most of the
   gap between coaches is still noise. The balance score and the film index barely agree (r ≈ 0): McVay is an average
   66/34 caller by down & distance but the easiest coach to read on film.
