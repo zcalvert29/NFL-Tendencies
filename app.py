@@ -4,7 +4,7 @@ NFL Tendencies: scouting and play-calling views built on nflfastR play-by-play.
 Run with:  streamlit run app.py
 
     app.py              navigation between the pages
-    page_tendencies.py  Tendencies: the Dowling app's Scout Opposing Offense page for any NFL offense
+    page_tendencies.py  Tendencies: a scouting report for any NFL offense
     page_balance.py     Balance Score: how close to 50/50 each play caller is on every decision down
     page_unpredictability.py  Unpredictability Index: how much a defense learns from each play caller's film
     page_surprise.py    Surprise Plays: do calls the defense could see coming do worse? (logic in surprise.py)

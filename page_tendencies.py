@@ -1,5 +1,5 @@
 """
-Tendencies page: the Dowling Catholic app's Scout Opposing Offense page for any NFL offense, built on nflfastR
+Tendencies page: a scouting report for any NFL offense, built on nflfastR
 play-by-play, with pass rate over expected (PROE) and the league's numbers in the same situation added throughout.
 
     page_tendencies.py  this page: sidebar filters, tabs
@@ -47,7 +47,7 @@ bar is the league's split in that situation.
 **Explosive:** a run of 10+ yards or a pass of 20+ yards.
 
 **Colors:** from the scouted offense's side. When a table has the NFL column for a number, green/red = clearly
-better/worse than the NFL in that same row. Otherwise the Dowling offense rule: green = clearly above the table's
+better/worse than the NFL in that same row. Otherwise green = clearly above the table's
 average, red only for results bad on their own (negative EPA or under a 40% success rate).
 Rows with fewer than {cm.COLOR_MIN_PLAYS} plays aren't colored; gray rows have fewer than {cm.LOW_N_ROWS} plays.
 
@@ -74,7 +74,7 @@ def teams() -> pd.DataFrame:
 
 
 def dropdown_multiselect(label, options, key, fmt=str, default=None):
-    """Compact dropdown: a button that opens a checklist, with a one-line summary (as in the Dowling app)."""
+    """Compact dropdown: a button that opens a checklist, with a one-line summary."""
     keys = {o: f"{key}_{o}" for o in options}
     for o, k in keys.items():
         st.session_state.setdefault(k, default is None or o in default)

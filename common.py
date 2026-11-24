@@ -1,7 +1,7 @@
 """
 Shared pieces for the Tendencies page: metrics, crosstabs with NFL comparison columns, table coloring, tendency
-badges, and the run/pass split bar. Colors and rules follow the Dowling app's Scout Opposing Offense page, from the
-scouted team's side: green = it works for them, red = it doesn't.
+badges, and the run/pass split bar. Colors are from the scouted team's side: green = it works for them, red = it
+doesn't.
 
 League-wide situational averages: any measure can be asked for as "NFL <measure>", which is the same measure for
 every team's plays in the same row (same sidebar filters), so "NFL Pass Rate" next to a 3rd & long row is the
@@ -76,8 +76,8 @@ for _m in list(METRIC_HELP):
 # table has that column, else the table's own average).
 COLOR_THRESHOLDS = {"Avg Yards Gained": 1.0, "Success Rate": 0.05, "EPA per Play": 0.10, "Explosive Rate": 0.04,
                     "Comp %": 0.06, "Conversion Rate": 0.08}
-# Results bad on their own: red when a table has no NFL column to compare with (the Dowling offense rule, minus its
-# 4.5 yards-a-play line, which would paint nearly every NFL run red).
+# Results bad on their own: red when a table has no NFL column to compare with. (No yards-a-play line: one at 4.5
+# would paint nearly every NFL run red.)
 RED_BELOW = {"EPA per Play": 0.0, "Success Rate": 0.40}
 PLAY_RESULTS = ["Avg Yards Gained", "Success Rate", "EPA per Play", "Explosive Rate"]
 
@@ -214,7 +214,7 @@ def crosstab(d: pd.DataFrame, rows, measures, league: pd.DataFrame | None = None
 def style_table(table: pd.DataFrame, gray_low_n: bool = True):
     """
     Color from the offense's side. When the table has the NFL column for a metric, each cell is compared to the NFL
-    in the same situation: green = clearly better, red = clearly worse. Without one, the Dowling offense rule: green
+    in the same situation: green = clearly better, red = clearly worse. Without one: green
     = clearly above the table's average, red only for results bad on their own (RED_BELOW). Rows with fewer than
     COLOR_MIN_PLAYS plays are never colored.
     """
@@ -345,7 +345,7 @@ def _spot(y100) -> str:
 
 
 def plays_table(d: pd.DataFrame) -> pd.DataFrame:
-    """One row per play, outcome first (as in the Dowling app), then a readable situation."""
+    """One row per play, outcome first, then a readable situation."""
     out = pd.DataFrame(index=d.index)
     out["EPA"] = d["epa"]
     out["Yards"] = [str(int(x)) if pd.notna(x) else "" for x in d["yards_gained"]]
@@ -377,7 +377,7 @@ def show_plays(title: str, d: pd.DataFrame, color: bool = True) -> None:
     st.dataframe(sty, width="stretch", hide_index=True)
 
 
-# ---- Takeaways and the EPA vs success chart (same as the Dowling app) --------------------------------------
+# ---- Takeaways and the EPA vs success chart ---------------------------------------------------------------
 TAKEAWAY_MIN_PLAYS = 10
 
 

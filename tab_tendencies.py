@@ -1,5 +1,5 @@
 """
-Tendencies tab: the Dowling Scout Opposing Offense > Tendencies tab for an NFL offense, with pass rate over expected
+Tendencies tab: an NFL offense's run/pass tendencies, with pass rate over expected
 (PROE) and the league's numbers in the same situation added to every view.
 """
 from __future__ import annotations

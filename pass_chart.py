@@ -1,6 +1,5 @@
 """
-Pass chart: every throw drawn where it was caught (or thrown to) on a perspective field, ported from the Dowling
-app's pass_chart.py.
+Pass chart: every throw drawn where it was caught (or thrown to) on a perspective field.
 
 nflfastR gives each throw its air yards (exact depth) and a direction (left / middle / right), so:
   * depth = air yards, with a hair of jitter so stacked throws separate;

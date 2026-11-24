@@ -1,5 +1,5 @@
 """
-Run game tab: the Dowling run-gap diagram drawn on nflfastR's seven run lanes (end / tackle / guard each side,
+Run game tab: a run-gap diagram drawn on nflfastR's seven run lanes (end / tackle / guard each side,
 plus middle), each lane next to the NFL's EPA in the same lane, then the run tables.
 """
 from __future__ import annotations
