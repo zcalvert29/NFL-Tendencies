@@ -44,7 +44,7 @@ def _hover(r) -> str:
 
 
 def dd_grid_html(cells: pd.DataFrame) -> str:
-    """Downs x distance: pass %, the run/pass bar, a PROE chip when the box clearly differs from an average team,
+    """Downs x distance: the more common call's % (pass, or run when they run more), the run/pass bar, a PROE chip when the box clearly differs from an average team,
     and the play count bottom right. Everything else is in the box's hover."""
     if cells.empty:
         return ""
@@ -63,11 +63,12 @@ def dd_grid_html(cells: pd.DataFrame) -> str:
             r = next(m.itertuples())
             small = r.n < cm.TELL_MIN_N
             chip = cm.proe_chip(r.proe) if not small and abs(r.proe) >= cm.CHIP_MIN_PROE else ""
+            share, call = (1 - r.pass_rate, "run") if r.pass_rate < 0.5 else (r.pass_rate, "pass")
             out.append(
                 f'<div title="{_hover(r)}" style="border:1px solid rgba(128,128,128,.25);'
                 f'border-radius:8px;padding:8px 10px;font-size:12px{";opacity:.45" if small else ""}">'
                 f'<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;min-height:20px">'
-                f'<span><b style="font-size:15px">{r.pass_rate:.0%}</b> <span style="{muted}">pass</span></span>{chip}</div>'
+                f'<span><b style="font-size:15px">{share:.0%}</b> <span style="{muted}">{call}</span></span>{chip}</div>'
                 f'{cm.split_bar(1 - r.pass_rate)}'
                 f'<div style="text-align:right;{muted}">{r.n} plays</div></div>')
     legend = (f'<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;margin:2px 0 8px;align-items:center">'

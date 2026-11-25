@@ -20,7 +20,7 @@ Pick an offense in the sidebar. Five tabs:
 
 | Tab | What it shows |
 |---|---|
-| **Tendencies** | The down & distance grid (pass %, run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); pass rate over expected by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); formation and personnel tendency tables (personnel from 2016 on, after each season is published) |
+| **Tendencies** | The down & distance grid (pass % or run %, whichever call they make more often; run/pass bar, a PROE chip where it stands out, play count; expected and NFL pass rates and the most-used formation on hover); pass rate over expected by game situation (their pass rate, expected pass rate, and the NFL's actual pass rate); formation and personnel tendency tables (personnel from 2016 on, after each season is published) |
 | **Sequencing** | What they call after a run, a pass, a completion, an incompletion, a big gain, a loss, a play that worked or didn't, and on a new set of downs, each with the NFL's pass rate after the same kind of snap and PROE; by down after a run or a pass |
 | **Red zone** | Trips, touchdown rate, scoring rate, points per trip, and trips per game against the NFL; how trips ended; how it's called in each zone inside the 20 with NFL pass rate, success, and EPA; formations and personnel inside the 20; run/pass by direction between the 11 and 20 and inside the 10 |
 | **Run game** | Run-lane diagram (EPA and carries for each of nflfastR's seven lanes, colored against the NFL's EPA in the same lane); runs by lane, formation, distance, personnel, and box count; ball carriers; best runs |
