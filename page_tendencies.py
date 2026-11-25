@@ -21,8 +21,13 @@ import tab_red_zone
 import tab_run_game
 import tab_sequencing
 import tab_tendencies
+import unpredictability as up
 
+# The default view leaves out the snaps where the game forces the call, the same ones the Balance Score page leaves
+# out: the last 2 minutes of a half and blowouts (score more than up.MAX_MARGIN points apart).
+COMPETITIVE = "Competitive snaps (default)"
 SITUATIONS = {
+    COMPETITIVE: lambda d: (d["half_seconds_remaining"] > 120) & (d["score_differential"].abs() <= up.MAX_MARGIN),
     "All plays": None,
     "Neutral (within 7, not last 2 min of a half)": lambda d: d["neutral"],
     "Red zone (inside the 20)": lambda d: d["yardline_100"] <= 20,
@@ -125,14 +130,17 @@ with st.sidebar:
     st.session_state.setdefault("f_team", "KC" if "KC" in TEAMS else TEAMS[0])
     team = st.selectbox("Offense to scout", TEAMS, key="f_team",
                         format_func=lambda t: f"{t} · {team_info['team_name'].get(t, '')}".rstrip(" ·"))
-    st.session_state.setdefault("f_stype", "Regular season + playoffs")
+    st.session_state.setdefault("f_stype", "Regular season")
     season_type = st.selectbox("Season type", ["Regular season", "Playoffs", "Regular season + playoffs"], key="f_stype")
     sel_weeks = dropdown_multiselect("Week", WEEKS, key="f_week", fmt=lambda w: f"Week {w}" if w <= 18 else
                                      {19: "Wild Card", 20: "Divisional", 21: "Conference", 22: "Super Bowl"}.get(w, f"Week {w}"))
     sel_downs = dropdown_multiselect("Down", [1, 2, 3, 4], key="f_down", fmt=lambda d: dt.DOWN_NAMES[d])
     sel_dist = dropdown_multiselect("Distance", dt.DISTANCE_ORDER, key="f_dist")
-    st.session_state.setdefault("f_sit", "All plays")
-    situation = st.selectbox("Situation", list(SITUATIONS), key="f_sit")
+    st.session_state.setdefault("f_sit", COMPETITIVE)
+    situation = st.selectbox("Situation", list(SITUATIONS), key="f_sit",
+                             help=f"{COMPETITIVE}: leaves out the last 2 minutes of each half and snaps with the score "
+                                  f"more than {up.MAX_MARGIN} points apart, where the game forces the call (the same "
+                                  "snaps the Balance Score page leaves out). Pick All plays to include them.")
     st.session_state.setdefault("f_minplays", 1)
     cm.MIN_PLAYS = st.slider("Hide table rows with fewer than … plays", 1, 30, key="f_minplays")
 
@@ -140,7 +148,7 @@ with st.sidebar:
         for k in list(st.session_state.keys()):
             if k.startswith(("f_down_", "f_dist_", "f_week_")):
                 st.session_state[k] = True
-        st.session_state.update(f_sit="All plays", f_minplays=1, f_stype="Regular season + playoffs")
+        st.session_state.update(f_sit=COMPETITIVE, f_minplays=1, f_stype="Regular season")
 
     st.button("Reset filters", on_click=_reset, width="stretch")
     st.caption(f"nflfastR data through {plays['game_date'].max()}")
@@ -177,7 +185,9 @@ logo = team_info["team_logo_espn"].get(team, "") if "team_logo_espn" in team_inf
 chips = [_summary(sel_seasons, seasons_all, str), season_type, _summary(sel_weeks, WEEKS, lambda w: f"W{w}", "All weeks"),
          _summary(sel_downs, [1, 2, 3, 4], lambda d: dt.DOWN_NAMES[d], "All downs"),
          _summary(sel_dist, dt.DISTANCE_ORDER, lambda s: s.split(" (")[0], "All distances")]
-if situation != "All plays":
+if situation == COMPETITIVE:
+    chips.append("Competitive snaps")
+elif situation != "All plays":
     chips.append(situation)
 if cm.MIN_PLAYS > 1:
     chips.append(f"Rows with {cm.MIN_PLAYS}+ plays")
@@ -190,6 +200,20 @@ st.html(f'<div style="display:flex;align-items:center;gap:12px;margin:-4px 0 4px
         '<span style="opacity:.6;margin-right:2px">Showing</span>'
         + "".join(f'<span style="padding:3px 10px;border-radius:999px;border:0.5px solid rgba(128,128,128,.4);'
                   f'background:rgba(128,128,128,.08)">{c}</span>' for c in chips) + "</div>")
+if situation == COMPETITIVE:
+    pool = game_filters(plays)
+    pool = pool[pool["posteam"] == team]
+    if set(sel_downs) != {1, 2, 3, 4}:
+        pool = pool[pool["DN"].isin(sel_downs)]
+    if set(sel_dist) != set(dt.DISTANCE_ORDER):
+        pool = pool[pool["Distance"].isin(sel_dist)]
+    late = int((pool["half_seconds_remaining"] <= 120).sum())
+    blowout = int(((pool["half_seconds_remaining"] > 120) & (pool["score_differential"].abs() > up.MAX_MARGIN)).sum())
+    st.caption(f"**Left out by default ({late + blowout:,} {team} plays):** the last 2 minutes of each half ({late:,}) "
+               f"and snaps with the score more than {up.MAX_MARGIN} points apart ({blowout:,}). In those spots the game "
+               "forces the call (throwing to stop the clock or catch up, running to burn it), so they hide a coach's "
+               "own habits. These are the same snaps the Balance Score page leaves out; every down & distance is "
+               "still shown. Pick **All plays** under Situation in the sidebar to include them.")
 with st.expander("What do these numbers mean?"):
     st.markdown(DEFINITIONS)
 

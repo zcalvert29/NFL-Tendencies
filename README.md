@@ -26,9 +26,14 @@ Pick an offense in the sidebar. Five tabs:
 | **Run game** | Run-lane diagram (EPA and carries for each of nflfastR's seven lanes, colored against the NFL's EPA in the same lane); runs by lane, formation, distance, personnel, and box count; ball carriers; best runs |
 | **Pass game** | Pass-zone heatmap (direction × depth, each zone shaded against the NFL's number in the same zone); pass chart of every throw; passes by depth, formation, coverage, and man/zone; targets; best passes |
 
-**Sidebar filters:** season, season type, week, down, distance, situation (neutral, red zone, goal to go, backed
-up, 3rd & short, short yardage, long yardage, two-minute), and a minimum-plays cutoff. NFL comparisons always use
-the same filters across all 32 teams.
+**Sidebar filters:** season, season type, week, down, distance, situation (competitive snaps, all plays, neutral,
+red zone, goal to go, backed up, 3rd & short, short yardage, long yardage, two-minute), and a minimum-plays cutoff. NFL
+comparisons always use the same filters across all 32 teams.
+
+**Default view:** regular season, **competitive snaps** only: it leaves out the last 2 minutes of each half and snaps
+with the score more than 16 points apart, where the game forces the call. These are the same snaps the Balance Score
+page leaves out, so a team's down & distance boxes match on both pages; every down & distance is still shown, and a
+note under the header says how many plays were left out. Pick **All plays** to include them.
 
 ### Balance Score
 
